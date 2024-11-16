@@ -29,14 +29,21 @@ pyinstaller --onefile --windowed --icon=CHIM.ico --name CHIM --add-data "CHIM.pn
 ### Command Breakdown:
 
 --onefile: Creates a single executable file.
+
 --windowed: Suppresses the console window (useful for GUI applications).
+
 --icon=CHIM.ico: Sets the icon for the executable.
+
 --name CHIM: Names the output executable CHIM.exe.
+
 --add-data "CHIM.png;.": Includes CHIM.png in the executable directory.
+
 --add-data "CHIM_title.png;.": Includes CHIM_title.png in the executable directory.
+
 --collect-all Pillow: Ensures all Pillow library files are included.
+
 chim_launcher.py: The main Python script to be compiled.
-6. Locate the Compiled Executable
+
 After the compilation process completes, you'll find the CHIM.exe file in the dist directory within your project folder.
 
 ### License
