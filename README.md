@@ -23,7 +23,7 @@ pip install Pillow requests
 
 pip install pyinstaller
 
-pyinstaller --onefile --windowed --icon=CHIM.ico --name CHIM --add-data "CHIM.png;." --add-data "CHIM_title.png;." --add-data "spinner.gif;." --collect-all Pillow chim_launcher.py
+pyinstaller --onefile --windowed --icon=CHIM.ico --name CHIM --add-data "CHIM.png;." --add-data "CHIM_title.png;." --exclude-module ImageSequence chim_launcher.py
 ```
 After the compilation process completes, you'll find the CHIM.exe file in the dist directory within your project folder.
 

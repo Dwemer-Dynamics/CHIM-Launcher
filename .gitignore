@@ -9,6 +9,7 @@ __pycache__/
 # Distribution / packaging
 build/
 dist/
+upx-4.2.4-win64
 *.egg-info/
 *.egg
 
@@ -44,3 +45,4 @@ Thumbs.db
 # Other temporary files
 *.tmp
 *.temp
+*.exe

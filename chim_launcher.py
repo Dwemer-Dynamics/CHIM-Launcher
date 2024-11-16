@@ -24,24 +24,19 @@ class CHIMLauncher(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("CHIM")
-        self.geometry("500x750")  # Adjusted window size
+        self.geometry("400x750")  
         self.configure(bg="#212529")
-        self.resizable(False, False)  # Make window size fixed and unchangeable
+        self.resizable(False, False)  
 
         self.bold_font = font.Font(family="Arial", size=12, weight="bold")
         
         # Initialize server running state
         self.server_running = False
 
-        # Initialize spinner attributes
-        self.spinner_index = 0
-        self.spinner_animation = self.after(100, self.animate_spinner)  # Adjust delay as needed
-
-
         self.create_widgets()
 
         # Set the window icon
-        self.set_window_icon('CHIM.png')  # Changed to use CHIM.png
+        self.set_window_icon('CHIM.png') 
 
         # Start the WSL process on launch
         self.after(0, self.start_wsl)
@@ -52,7 +47,7 @@ class CHIMLauncher(tk.Tk):
     def set_window_icon(self, icon_filename):
         """Sets the window icon for the application."""
         icon_path = get_resource_path(icon_filename)
-        print(f"Attempting to set icon using path: {icon_path}")  # For debugging
+        print(f"Attempting to set icon using path: {icon_path}") 
 
         try:
             icon_image = tk.PhotoImage(file=icon_path)
@@ -95,13 +90,13 @@ class CHIMLauncher(tk.Tk):
 
         # Style options for buttons
         button_style = {
-            'bg': '#031633',         # Background color
-            'fg': 'white',           # Text color
+            'bg': '#031633',         
+            'fg': 'white',          
             'activebackground': '#021b4d',
             'activeforeground': 'white',
-            'padx': 10,              # Padding on x-axis
-            'pady': 5,               # Padding on y-axis
-            'cursor': 'hand2'        # Cursor changes to hand on hover
+            'padx': 10,              
+            'pady': 5,               
+            'cursor': 'hand2'        
         }
 
         # Arrange buttons vertically using pack
@@ -184,7 +179,7 @@ class CHIMLauncher(tk.Tk):
             text=commit_info,
             fg="white",
             bg="#212529",
-            font=("Arial", 8)  # Made font size smaller
+            font=("Arial", 8)  
         )
         commit_label.pack(pady=5)
 
@@ -192,7 +187,7 @@ class CHIMLauncher(tk.Tk):
         repo_link = tk.Label(
             top_frame,
             text="View on GitHub",
-            fg="blue",
+            fg="white",
             bg="#212529",
             font=("Arial", 10),
             cursor="hand2"
@@ -203,8 +198,8 @@ class CHIMLauncher(tk.Tk):
         # Create the main frame to hold loading_frame and output_area
         self.main_frame = tk.Frame(self, bg="#212529")
         self.main_frame.pack(fill=tk.BOTH, expand=True)
-        self.main_frame.grid_rowconfigure(0, weight=3)  # Loading frame row (30%)
-        self.main_frame.grid_rowconfigure(1, weight=7)  # Output area row (70%)
+        self.main_frame.grid_rowconfigure(0, weight=3)  
+        self.main_frame.grid_rowconfigure(1, weight=7)  
         self.main_frame.grid_columnconfigure(0, weight=1)
 
         # Create the loading frame but do not pack it yet
@@ -216,22 +211,6 @@ class CHIMLauncher(tk.Tk):
             font=("Arial", 12)
         )
         self.loading_label.pack(side=tk.LEFT, padx=5)
-
-        # Load the spinner GIF
-        spinner_path = get_resource_path('spinner.gif')
-        try:
-            print(f"Attempting to load spinner GIF from {spinner_path}")
-            spinner_image = Image.open(spinner_path)
-            # Resize the spinner to 30x30 pixels (adjust as needed)
-            spinner_image = spinner_image.resize((30, 30), Image.ANTIALIAS)
-            self.spinner_frames = [ImageTk.PhotoImage(frame.copy()) for frame in ImageSequence.Iterator(spinner_image)]
-            print(f"Loaded {len(self.spinner_frames)} frames for spinner GIF.")
-            self.spinner_label = tk.Label(self.loading_frame, bg="#212529")
-            self.spinner_label.pack(side=tk.LEFT, padx=5)
-        except Exception as e:
-            print(f"Error loading spinner GIF: {e}")
-            self.spinner_frames = None
-            self.spinner_label = None
 
         # Add the scrolled text area
         self.output_area = scrolledtext.ScrolledText(
@@ -247,15 +226,14 @@ class CHIMLauncher(tk.Tk):
 
     def add_hover_effects(self, button):
         def on_enter(e):
-            button['background'] = '#021b4d'  # Hover color
+            button['background'] = '#021b4d'  
         def on_leave(e):
-            button['background'] = '#031633'  # Original color
+            button['background'] = '#031633' 
         button.bind('<Enter>', on_enter)
         button.bind('<Leave>', on_leave)
 
     def get_latest_commit_info(self):
         try:
-            # Corrected the GitHub API URL to fetch commits from the 'aiagent' branch
             response = requests.get("https://api.github.com/repos/abeiro/HerikaServer/commits?sha=aiagent")
             if response.status_code == 200:
                 commit_data = response.json()[0]
@@ -270,15 +248,9 @@ class CHIMLauncher(tk.Tk):
             return f"Error fetching update info: {e}"
 
     def start_wsl(self):
-         # Disable the Start button and enable the Stop button
+        # Disable the Start button and enable the Stop button
         self.start_button.config(state=tk.DISABLED)
         self.stop_button.config(state=tk.NORMAL)
-
-        # Start the spinner and show loading label
-        self.loading = True
-        self.loading_label.config(text="Server is starting up")
-        self.loading_frame.grid(row=0, column=0, sticky="ew", padx=10, pady=5)
-        self.start_spinner()
 
         # Start the WSL command in the background
         threading.Thread(target=self.run_wsl_silently, daemon=True).start()
@@ -307,12 +279,6 @@ class CHIMLauncher(tk.Tk):
             # Read output line by line
             for line in self.process.stdout:
                 self.append_output(line)
-
-                # Stop spinner when "Installed Components:" is output
-                if "Installed Components:" in line:
-                    self.loading = False
-                    self.after(0, self.stop_spinner)
-                    self.after(0, self.hide_loading_widgets)
 
             self.process.wait()
 
@@ -374,12 +340,6 @@ class CHIMLauncher(tk.Tk):
         # Server is no longer running
         self.server_running = False
 
-        # Stop the spinner if it's still running
-        if self.loading:
-            self.loading = False
-            self.after(0, self.stop_spinner)
-            self.after(0, self.hide_loading_widgets)
-
     def force_stop_wsl(self):
         threading.Thread(target=self.force_stop_wsl_thread, daemon=True).start()
 
@@ -413,12 +373,6 @@ class CHIMLauncher(tk.Tk):
         # Server is no longer running
         self.server_running = False
 
-        # Stop the spinner if it's still running
-        if self.loading:
-            self.loading = False
-            self.after(0, self.stop_spinner)
-            self.after(0, self.hide_loading_widgets)
-
     def update_wsl(self):
         threading.Thread(target=self.update_wsl_thread, daemon=True).start()
 
@@ -429,13 +383,6 @@ class CHIMLauncher(tk.Tk):
             if not confirm:
                 self.append_output("Update canceled by the user.\n")
                 return
-
-            # Start the spinner and show loading label
-            self.loading = True
-            self.loading_label.config(text="Updating Server...")
-            # Replace pack with grid
-            self.loading_frame.grid(row=0, column=0, sticky="ew", padx=10, pady=5)
-            self.start_spinner()
 
             # Run the update command
             startupinfo = subprocess.STARTUPINFO()
@@ -466,10 +413,8 @@ class CHIMLauncher(tk.Tk):
             self.append_output(f"An error occurred during update: {e}\n")
 
         finally:
-            # Stop the spinner
             if self.loading:
                 self.loading = False
-                self.after(0, self.stop_spinner)
                 self.after(0, self.hide_loading_widgets)
 
     def on_close(self):
@@ -530,24 +475,6 @@ class CHIMLauncher(tk.Tk):
                 return True  # This is an unwanted line
         return False  # This line is acceptable
 
-    def start_spinner(self):
-        if self.spinner_frames and not self.spinner_animation:
-            self.animate_spinner()
-
-    def stop_spinner(self):
-        if self.spinner_animation:
-            self.after_cancel(self.spinner_animation)
-            self.spinner_animation = None
-        self.spinner_index = 0
-
-    def animate_spinner(self):
-        if self.spinner_frames:
-            frame = self.spinner_frames[self.spinner_index]
-            self.spinner_label.configure(image=frame)
-            self.spinner_label.image = frame  # Keep a reference to prevent garbage collection
-            self.spinner_index = (self.spinner_index + 1) % len(self.spinner_frames)
-            self.spinner_animation = self.after(100, self.animate_spinner)  # Adjust delay as needed
-
     def configure_installed_components(self):
         threading.Thread(target=self.configure_installed_components_thread, daemon=True).start()
 
@@ -580,13 +507,15 @@ class CHIMLauncher(tk.Tk):
         submenu_window.configure(bg="#212529")
         submenu_window.resizable(False, False)
         
-        # Set the window icon to CHIM.ico
+        # Set the window icon to CHIM.png
         try:
-            icon_path = get_resource_path('CHIM.ico')
-            submenu_window.iconbitmap(icon_path)
+            icon_path = get_resource_path('CHIM.png')  # Ensure CHIM.png exists
+            img = Image.open(icon_path)
+            photo = ImageTk.PhotoImage(img)  # Convert to Tkinter-compatible photo
+            submenu_window.iconphoto(False, photo)  # Set the icon
         except Exception as e:
             print(f"Error setting icon: {e}")
-
+        
         # Style options for buttons
         button_style = {
             'bg': "#031633",  # Updated button color
