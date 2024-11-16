@@ -7,16 +7,14 @@ CHIM Launcher is a Python-compiled executable designed to run the DwemerDistro f
 
 ## Prerequisites
 Before you begin, ensure you have met the following requirements:
-- **Python 3.6 or higher**: Download from [python.org](https://python.org).
-- **pip**: Python package installer (comes bundled with Python).
-- **PyInstaller**: Tool to convert Python scripts into standalone executables.
-
+- **Python 3.6 or higher**
+- **pip**
+- **PyInstaller**
 ---
 
 ## Installation and Compilation
 
-### 1. Clone the Repository
-Clone this repository to your local machine using Git:
+Install the prerequisites and run these commands:
 
 ```
 pip install Pillow requests
