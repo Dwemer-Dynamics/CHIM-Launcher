@@ -555,7 +555,7 @@ class CHIMLauncher(tk.Tk):
         # Create a new Toplevel window
         submenu_window = tk.Toplevel(self)
         submenu_window.title("Install Components")
-        submenu_window.geometry("550x400")  # Increased size
+        submenu_window.geometry("500x400")  # Increased size
         submenu_window.configure(bg="#212529")
         submenu_window.resizable(False, False)
 
@@ -635,7 +635,7 @@ class CHIMLauncher(tk.Tk):
         # README Section
         readme_frame = tk.LabelFrame(
             submenu_window,
-            text="README",
+            text="READ THIS!",
             bg="#212529",
             fg="white",
             font=("Arial", 12, "bold")
