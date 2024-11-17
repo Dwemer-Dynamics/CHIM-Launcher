@@ -32,13 +32,19 @@ class CHIMLauncher(tk.Tk):
         
         # Initialize server running state
         self.server_running = False
+        self.server_starting = False  # Flag to indicate server is starting
+
+        # Animation variables
+        self.animation_running = False
+        self.animation_dots = 0
+        self.original_start_text = "Start Server"
 
         self.create_widgets()
 
         # Set the window icon
         self.set_window_icon('CHIM.png') 
 
-        # Start the WSL process on launch
+        # Automatically start the WSL process on launch
         self.after(0, self.start_wsl)
 
         # Bind the window close event to on_close method
@@ -102,7 +108,7 @@ class CHIMLauncher(tk.Tk):
         # Arrange buttons vertically using pack
         self.start_button = tk.Button(
             button_frame,
-            text="Start Server",
+            text=self.original_start_text,
             command=self.start_wsl,
             font=self.bold_font,
             **button_style
@@ -247,10 +253,49 @@ class CHIMLauncher(tk.Tk):
         except Exception as e:
             return f"Error fetching update info: {e}"
 
+    def start_animation(self):
+        """Start the animated dots on the Start button."""
+        if not self.animation_running:
+            self.animation_running = True
+            self.animation_dots = 1
+            self.update_animation()
+
+    def update_animation(self):
+        """Update the Start button's text with animated dots."""
+        if self.animation_running and self.server_starting:
+            dots = '.' * self.animation_dots
+            self.start_button.config(text=f"Server is Starting {dots}")
+            self.animation_dots = self.animation_dots % 3 + 1
+            self.after(500, self.update_animation)  # Update every 500ms
+
+    def stop_animation(self):
+        """Stop the animated dots on the Start button and reset text."""
+        if self.animation_running:
+            self.animation_running = False
+            self.start_button.config(text=self.original_start_text)
+
+    def set_server_running(self):
+        """Set the Start button to indicate that the server is running."""
+        self.start_button.config(text="Server is Running", state=tk.DISABLED)
+
+    def set_server_not_running(self):
+        """Reset the Start button to its original state."""
+        self.start_button.config(text=self.original_start_text, state=tk.NORMAL)
+
     def start_wsl(self):
-        # Disable the Start button and enable the Stop button
+        if self.server_running or self.server_starting:
+            messagebox.showinfo("Server Status", "The server is already running or starting.")
+            return
+
+        # Update flags and button states
+        self.server_starting = True
         self.start_button.config(state=tk.DISABLED)
         self.stop_button.config(state=tk.NORMAL)
+
+        # Start the animation
+        self.original_start_text = "Start Server"
+        self.start_button.config(text="Server is Starting .")
+        self.start_animation()
 
         # Start the WSL command in the background
         threading.Thread(target=self.run_wsl_silently, daemon=True).start()
@@ -272,13 +317,19 @@ class CHIMLauncher(tk.Tk):
                 creationflags=subprocess.CREATE_NO_WINDOW
             )
 
-            self.server_running = True
-
             self.append_output("DwemerDistro is starting up.\n")
 
             # Read output line by line
             for line in self.process.stdout:
                 self.append_output(line)
+                # Check if the server is ready
+                if "AIAgent.ini Network Settings:" in line:
+                    self.server_running = True
+                    self.server_starting = False
+                    self.after(0, self.stop_animation)
+                    self.after(0, self.set_server_running)
+                    self.append_output("Server is ready.\n")
+                    # Continue reading output until the process ends
 
             self.process.wait()
 
@@ -296,17 +347,22 @@ class CHIMLauncher(tk.Tk):
     def update_buttons_after_process(self):
         def update_buttons():
             self.server_running = False
-            self.start_button.config(state=tk.NORMAL)
+            self.server_starting = False
+            self.set_server_not_running()
             self.stop_button.config(state=tk.DISABLED)
         self.after(0, update_buttons)
 
     def stop_wsl(self):
+        if not self.server_running and not self.server_starting:
+            messagebox.showinfo("Server Status", "The server is not currently running.")
+            return
+
         threading.Thread(target=self.stop_wsl_thread, daemon=True).start()
 
     def stop_wsl_thread(self):
         try:
             # Send newline to the process's stdin to simulate pressing ENTER
-            if self.process and self.process.poll() is None:
+            if hasattr(self, 'process') and self.process and self.process.poll() is None:
                 self.process.stdin.write('\n')
                 self.process.stdin.flush()
                 try:
@@ -334,7 +390,7 @@ class CHIMLauncher(tk.Tk):
             self.append_output(f"An error occurred: {e}\n")
 
         # Re-enable the Start button and disable the Stop button
-        self.after(0, lambda: self.start_button.config(state=tk.NORMAL))
+        self.after(0, self.set_server_not_running)
         self.after(0, lambda: self.stop_button.config(state=tk.DISABLED))
 
         # Server is no longer running
@@ -359,7 +415,7 @@ class CHIMLauncher(tk.Tk):
             self.append_output("DwemerDistro has been forcefully stopped.\n")
 
             # If the process is still running, kill it
-            if self.process and self.process.poll() is None:
+            if hasattr(self, 'process') and self.process and self.process.poll() is None:
                 self.process.kill()
                 self.append_output("DwemerDistro has been forcefully stopped.\n")
 
@@ -367,11 +423,12 @@ class CHIMLauncher(tk.Tk):
             self.append_output(f"An error occurred: {e}\n")
 
         # Re-enable the Start button and disable the Stop button
-        self.after(0, lambda: self.start_button.config(state=tk.NORMAL))
+        self.after(0, self.set_server_not_running)
         self.after(0, lambda: self.stop_button.config(state=tk.DISABLED))
 
         # Server is no longer running
         self.server_running = False
+        self.server_starting = False
 
     def update_wsl(self):
         threading.Thread(target=self.update_wsl_thread, daemon=True).start()
@@ -381,7 +438,7 @@ class CHIMLauncher(tk.Tk):
             # Confirm update with the user
             confirm = messagebox.askyesno("Update Server", "This will update the CHIM server. Are you sure?")
             if not confirm:
-                self.append_output("Update canceled by the user.\n")
+                self.append_output("Update canceled.\n")
                 return
 
             # Run the update command
@@ -399,7 +456,7 @@ class CHIMLauncher(tk.Tk):
                 creationflags=subprocess.CREATE_NO_WINDOW
             )
 
-            self.append_output("Update command started.\n")
+            self.append_output("Update started.\n")
 
             # Read output line by line
             for line in update_process.stdout:
@@ -413,15 +470,17 @@ class CHIMLauncher(tk.Tk):
             self.append_output(f"An error occurred during update: {e}\n")
 
         finally:
-            if self.loading:
+            if hasattr(self, 'loading') and self.loading:
                 self.loading = False
                 self.after(0, self.hide_loading_widgets)
 
     def on_close(self):
-        # Force stop the WSL distribution when the window is closed
-        self.force_stop_wsl()
-        # Destroy the window after force stopping
-        self.destroy()
+        # Confirm exit with the user
+        if messagebox.askokcancel("Quit", "Do you really want to quit?"):
+            # Force stop the WSL distribution when the window is closed
+            self.force_stop_wsl()
+            # Destroy the window after force stopping
+            self.destroy()
 
     def append_output(self, text):
         # Remove ANSI escape sequences from the text
@@ -479,34 +538,27 @@ class CHIMLauncher(tk.Tk):
         threading.Thread(target=self.configure_installed_components_thread, daemon=True).start()
 
     def configure_installed_components_thread(self):
-        try:
-            # Open a new command window and run the specified command
-            cmd = 'wsl -d DwemerAI4Skyrim3 -u dwemer -- /usr/local/bin/conf_services'
-            subprocess.Popen(['cmd', '/k', cmd])
-            self.append_output("Opened configuration for installed components.\n")
-        except Exception as e:
-            self.append_output(f"An error occurred while opening configuration: {e}\n")
+        # Open a new command window, run the specified command, and close the window after execution
+        cmd = 'wsl -d DwemerAI4Skyrim3 -u dwemer -- /usr/local/bin/conf_services'
+        subprocess.Popen(['cmd', '/c', cmd])  # Changed '/k' to '/c' to close the window after command execution
+        self.close_menu()  # Ensure the menu is closed after initiating the command
 
     def open_chim_server_folder(self):
         threading.Thread(target=self.open_chim_server_folder_thread, daemon=True).start()
 
     def open_chim_server_folder_thread(self):
-        try:
-            # Run the command to open the folder
-            folder_path = r'\\wsl.localhost\DwemerAI4Skyrim3\var\www\html\HerikaServer'
-            subprocess.Popen(['explorer', folder_path])
-            self.append_output("Opened Server Folder.\n")
-        except Exception as e:
-            self.append_output(f"An error occurred while opening the folder: {e}\n")
+        # Run the command to open the folder
+        folder_path = r'\\wsl.localhost\DwemerAI4Skyrim3\var\www\html\HerikaServer'
+        subprocess.Popen(['explorer', folder_path])
 
     def open_install_components_menu(self):
         # Create a new Toplevel window
         submenu_window = tk.Toplevel(self)
         submenu_window.title("Install Components")
-        submenu_window.geometry("400x200")
+        submenu_window.geometry("550x400")  # Increased size
         submenu_window.configure(bg="#212529")
         submenu_window.resizable(False, False)
-        
+
         # Set the window icon to CHIM.png
         try:
             icon_path = get_resource_path('CHIM.png')  # Ensure CHIM.png exists
@@ -515,7 +567,7 @@ class CHIMLauncher(tk.Tk):
             submenu_window.iconphoto(False, photo)  # Set the icon
         except Exception as e:
             print(f"Error setting icon: {e}")
-        
+
         # Style options for buttons
         button_style = {
             'bg': "#031633",  # Updated button color
@@ -530,9 +582,13 @@ class CHIMLauncher(tk.Tk):
             'cursor': 'hand2'  # Change cursor on hover
         }
 
+        # Create a frame for the buttons
+        button_frame = tk.Frame(submenu_window, bg="#212529")
+        button_frame.pack(pady=10)
+
         # Create buttons
         install_cuda_button = tk.Button(
-            submenu_window,
+            button_frame,
             text="Install CUDA",
             command=self.install_cuda,
             **button_style
@@ -541,7 +597,7 @@ class CHIMLauncher(tk.Tk):
         self.add_hover_effects(install_cuda_button)
 
         install_xtts_button = tk.Button(
-            submenu_window,
+            button_frame,
             text="Install XTTS",
             command=self.install_xtts,
             **button_style
@@ -550,7 +606,7 @@ class CHIMLauncher(tk.Tk):
         self.add_hover_effects(install_xtts_button)
 
         install_melotts_button = tk.Button(
-            submenu_window,
+            button_frame,
             text="Install MeloTTS",
             command=self.install_melotts,
             **button_style
@@ -559,7 +615,7 @@ class CHIMLauncher(tk.Tk):
         self.add_hover_effects(install_melotts_button)
 
         install_minime_t5_button = tk.Button(
-            submenu_window,
+            button_frame,
             text="Install Minime-T5",
             command=self.install_minime_t5,
             **button_style
@@ -568,7 +624,7 @@ class CHIMLauncher(tk.Tk):
         self.add_hover_effects(install_minime_t5_button)
 
         install_mimic3_button = tk.Button(
-            submenu_window,
+            button_frame,
             text="Install Mimic3",
             command=self.install_mimic3,
             **button_style
@@ -576,28 +632,91 @@ class CHIMLauncher(tk.Tk):
         install_mimic3_button.pack(pady=5)
         self.add_hover_effects(install_mimic3_button)
 
+        # README Section
+        readme_frame = tk.LabelFrame(
+            submenu_window,
+            text="README",
+            bg="#212529",
+            fg="white",
+            font=("Arial", 12, "bold")
+        )
+        readme_frame.pack(fill="both", expand=True, padx=10, pady=10)
+
+        # NVIDIA Users Section
+        nvidia_header = tk.Label(
+            readme_frame,
+            text="NVIDIA GPU users:",
+            bg="#212529",
+            fg="white",
+            font=("Arial", 10, "bold"),
+            anchor="w"
+        )
+        nvidia_header.pack(pady=(10, 0), padx=0, fill="x")
+
+        nvidia_text = (
+            "Install CUDA first! Then any of the other components you wish to use."
+        )
+        nvidia_label = tk.Label(
+            readme_frame,
+            text=nvidia_text,
+            bg="#212529",
+            fg="white",
+            wraplength=480,  # Adjust wrap length as needed
+            justify="left",
+            font=("Arial", 10),
+            anchor="w"
+        )
+        nvidia_label.pack(pady=(0, 10), padx=0, fill="x")
+
+        # AMD Users Section
+        amd_header = tk.Label(
+            readme_frame,
+            text="AMD GPU users:",
+            bg="#212529",
+            fg="white",
+            font=("Arial", 10, "bold"),
+            anchor="w"
+        )
+        amd_header.pack(pady=(10, 0), padx=0, fill="x")
+
+        amd_text = (
+            "You can only install MeloTTS, Mimic3 and Minime-T5 in CPU mode only! "
+            "This is because AMD cards do not support CUDA."
+        )
+        amd_label = tk.Label(
+            readme_frame,
+            text=amd_text,
+            bg="#212529",
+            fg="white",
+            wraplength=480,  # Adjust wrap length as needed
+            justify="left",
+            font=("Arial", 10),
+            anchor="w"
+        )
+        amd_label.pack(pady=(0, 10), padx=0, fill="x")
+
     def run_command_in_new_window(self, cmd):
         try:
             # Open a new command window and run the specified command
-            subprocess.Popen(['cmd', '/k', cmd])
+            subprocess.Popen(['cmd', '/c', cmd])
             self.append_output(f"Command started: {cmd}\n")
         except Exception as e:
             self.append_output(f"An error occurred while running command: {e}\n")
 
     def install_cuda(self):
-        threading.Thread(target=self.run_command_in_new_window, args=('wsl -d  DwemerAI4Skyrim3 -- /usr/local/bin/install_full_packages',), daemon=True).start()
+        threading.Thread(target=self.run_command_in_new_window, args=('wsl -d DwemerAI4Skyrim3 -- /usr/local/bin/install_full_packages',), daemon=True).start()
 
     def install_xtts(self):
-        threading.Thread(target=self.run_command_in_new_window, args=('wsl -d  DwemerAI4Skyrim3 -u dwemer -- /home/dwemer/xtts-api-server/ddistro_install.sh',), daemon=True).start()
+        threading.Thread(target=self.run_command_in_new_window, args=('wsl -d DwemerAI4Skyrim3 -u dwemer -- /home/dwemer/xtts-api-server/ddistro_install.sh',), daemon=True).start()
 
     def install_melotts(self):
-        threading.Thread(target=self.run_command_in_new_window, args=('wsl -d  DwemerAI4Skyrim3 -u dwemer -- /home/dwemer/MeloTTS/ddistro_install.sh',), daemon=True).start()
+        threading.Thread(target=self.run_command_in_new_window, args=('wsl -d DwemerAI4Skyrim3 -u dwemer -- /home/dwemer/MeloTTS/ddistro_install.sh',), daemon=True).start()
 
     def install_minime_t5(self):
-        threading.Thread(target=self.run_command_in_new_window, args=('wsl -d  DwemerAI4Skyrim3 -u dwemer -- /home/dwemer/minime-t5/ddistro_install.sh',), daemon=True).start()
+        threading.Thread(target=self.run_command_in_new_window, args=('wsl -d DwemerAI4Skyrim3 -u dwemer -- /home/dwemer/minime-t5/ddistro_install.sh',), daemon=True).start()
 
     def install_mimic3(self):
-        threading.Thread(target=self.run_command_in_new_window, args=('wsl -d  DwemerAI4Skyrim3 -u dwemer -- /home/dwemer/mimic3/ddistro_install.sh',), daemon=True).start()
+        threading.Thread(target=self.run_command_in_new_window, args=('wsl -d DwemerAI4Skyrim3 -u dwemer -- /home/dwemer/mimic3/ddistro_install.sh',), daemon=True).start()
 
 
 if __name__ == "__main__":
