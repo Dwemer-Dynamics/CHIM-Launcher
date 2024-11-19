@@ -24,7 +24,7 @@ class CHIMLauncher(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("CHIM")
-        self.geometry("400x750")  
+        self.geometry("400x800")  
         self.configure(bg="#212529")
         self.resizable(False, False)  
 
@@ -177,6 +177,16 @@ class CHIMLauncher(tk.Tk):
         )
         self.configure_button.pack(fill=tk.X, pady=5)
         self.add_hover_effects(self.configure_button)
+        
+        self.debugging_button = tk.Button(
+            button_frame,
+            text="Debugging",
+            command=self.open_debugging_menu,  # New command method
+            font=self.bold_font,
+            **button_style
+        )
+        self.debugging_button.pack(fill=tk.X, pady=5)
+        self.add_hover_effects(self.debugging_button)
 
         # Display latest commit info
         commit_info = self.get_latest_commit_info()
@@ -699,7 +709,6 @@ class CHIMLauncher(tk.Tk):
         try:
             # Open a new command window and run the specified command
             subprocess.Popen(['cmd', '/c', cmd])
-            self.append_output(f"Command started: {cmd}\n")
         except Exception as e:
             self.append_output(f"An error occurred while running command: {e}\n")
 
@@ -717,7 +726,76 @@ class CHIMLauncher(tk.Tk):
 
     def install_mimic3(self):
         threading.Thread(target=self.run_command_in_new_window, args=('wsl -d DwemerAI4Skyrim3 -u dwemer -- /home/dwemer/mimic3/ddistro_install.sh',), daemon=True).start()
+    
+    # **Updated Debugging menu method**
+    def open_debugging_menu(self):
+        # Create a new Toplevel window
+        debug_window = tk.Toplevel(self)
+        debug_window.title("Debugging")
+        debug_window.geometry("400x180")  # Adjust size as needed
+        debug_window.configure(bg="#212529")
+        debug_window.resizable(False, False)
 
+        # Set the window icon to CHIM.png (optional)
+        try:
+            icon_path = get_resource_path('CHIM.png')  # Ensure CHIM.png exists
+            img = Image.open(icon_path)
+            photo = ImageTk.PhotoImage(img)  # Convert to Tkinter-compatible photo
+            debug_window.iconphoto(False, photo)  # Set the icon
+        except Exception as e:
+            print(f"Error setting icon: {e}")
+
+        # Style options for buttons
+        debug_button_style = {
+            'bg': "#031633",  # Button color
+            'fg': "white",
+            'activebackground': "#021b4d",  # Active button color
+            'activeforeground': "white",
+            'font': ("Arial", 12, "bold"),
+            'bd': 1,
+            'relief': tk.GROOVE,
+            'highlightthickness': 0,
+            'width': 25,
+            'cursor': 'hand2'  # Change cursor on hover
+        }
+
+        # Create a frame for the buttons
+        debug_button_frame = tk.Frame(debug_window, bg="#212529")
+        debug_button_frame.pack(pady=20)
+
+        # Define the debugging buttons with their respective commands
+        debugging_commands = [
+            ("Open Terminal", self.open_terminal),
+            ("View Memory Usage", self.view_memory_usage),
+            ("View Distro XTTS Logs", self.view_xtts_logs)
+        ]
+
+        for text, command in debugging_commands:
+            btn = tk.Button(
+                debug_button_frame,
+                text=text,
+                command=command,
+                **debug_button_style
+            )
+            btn.pack(pady=5)
+            self.add_hover_effects(btn)
+
+    # **New Methods for Debugging Buttons**
+
+    def open_terminal(self):
+        """Opens a new terminal window with the specified command."""
+        cmd = 'wsl -d DwemerAI4Skyrim3 -u dwemer -- /usr/local/bin/terminal'
+        threading.Thread(target=self.run_command_in_new_window, args=(cmd,), daemon=True).start()
+
+    def view_memory_usage(self):
+        """Opens a new terminal window to view memory usage using htop."""
+        cmd = 'wsl -d DwemerAI4Skyrim3 -- htop'
+        threading.Thread(target=self.run_command_in_new_window, args=(cmd,), daemon=True).start()
+
+    def view_xtts_logs(self):
+        """Opens a new terminal window to view the latest XTTS logs."""
+        cmd = 'wsl -d DwemerAI4Skyrim3 -u dwemer -- tail -n 100 -f /home/dwemer/xtts-api-server/log.txt'
+        threading.Thread(target=self.run_command_in_new_window, args=(cmd,), daemon=True).start()
 
 if __name__ == "__main__":
     app = CHIMLauncher()
