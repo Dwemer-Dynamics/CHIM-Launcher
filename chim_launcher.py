@@ -8,7 +8,7 @@ import webbrowser
 import datetime
 import sys
 import os
-from PIL import Image, ImageTk, ImageSequence
+from PIL import Image, ImageTk
 
 def get_resource_path(filename):
     """Get the absolute path to a resource, works for PyInstaller."""
@@ -34,10 +34,14 @@ class CHIMLauncher(tk.Tk):
         self.server_running = False
         self.server_starting = False  # Flag to indicate server is starting
 
-        # Animation variables
+        # Animation variables for the Start Server button
         self.animation_running = False
         self.animation_dots = 0
         self.original_start_text = "Start Server"
+
+        # Animation variables for the update status label
+        self.update_status_animation_running = False
+        self.update_status_animation_dots = 0
 
         self.create_widgets()
 
@@ -46,6 +50,9 @@ class CHIMLauncher(tk.Tk):
 
         # Bind the window close event to on_close method
         self.protocol("WM_DELETE_WINDOW", self.on_close)
+        
+        # Start the update check in a separate thread
+        threading.Thread(target=self.check_for_updates, daemon=True).start()
         
     def set_window_icon(self, icon_filename):
         """Sets the window icon for the application."""
@@ -178,23 +185,22 @@ class CHIMLauncher(tk.Tk):
         self.debugging_button = tk.Button(
             button_frame,
             text="Debugging",
-            command=self.open_debugging_menu,  # New command method
+            command=self.open_debugging_menu,
             font=self.bold_font,
             **button_style
         )
         self.debugging_button.pack(fill=tk.X, pady=5)
         self.add_hover_effects(self.debugging_button)
 
-        # Display latest commit info
-        commit_info = self.get_latest_commit_info()
-        commit_label = tk.Label(
+        # Display update status
+        self.update_status_label = tk.Label(
             top_frame,
-            text=commit_info,
+            text="Checking server update status",
             fg="white",
             bg="#212529",
-            font=("Arial", 8)  
+            font=("Arial", 10)
         )
-        commit_label.pack(pady=5)
+        self.update_status_label.pack(pady=5)
 
         # Add a link to the repository (Optional)
         repo_link = tk.Label(
@@ -236,7 +242,6 @@ class CHIMLauncher(tk.Tk):
         self.output_area.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0,10))
         self.output_area.config(state=tk.DISABLED)
         
-
     def add_hover_effects(self, button):
         def on_enter(e):
             button['background'] = '#021b4d'  
@@ -244,21 +249,6 @@ class CHIMLauncher(tk.Tk):
             button['background'] = '#031633' 
         button.bind('<Enter>', on_enter)
         button.bind('<Leave>', on_leave)
-
-    def get_latest_commit_info(self):
-        try:
-            response = requests.get("https://api.github.com/repos/abeiro/HerikaServer/commits?sha=aiagent")
-            if response.status_code == 200:
-                commit_data = response.json()[0]
-                commit_date = commit_data['commit']['author']['date']
-                # Format the date
-                date_obj = datetime.datetime.strptime(commit_date, "%Y-%m-%dT%H:%M:%SZ")
-                formatted_date = date_obj.strftime("%Y-%m-%d %H:%M:%S")
-                return f"Last server update was on {formatted_date}"
-            else:
-                return f"Unable to fetch latest update date: {response.status_code}"
-        except Exception as e:
-            return f"Error fetching update info: {e}"
 
     def start_animation(self):
         """Start the animated dots on the Start button."""
@@ -349,7 +339,6 @@ class CHIMLauncher(tk.Tk):
 
     def hide_loading_widgets(self):
         self.loading_frame.grid_remove()
-
 
     def update_buttons_after_process(self):
         def update_buttons():
@@ -442,10 +431,14 @@ class CHIMLauncher(tk.Tk):
 
     def update_wsl_thread(self):
         try:
+            # Disable the Update button to prevent multiple clicks
+            self.after(0, lambda: self.update_button.config(state=tk.DISABLED))
+
             # Confirm update with the user
             confirm = messagebox.askyesno("Update Server", "This will update the CHIM server. Are you sure?")
             if not confirm:
                 self.append_output("Update canceled.\n")
+                self.after(0, lambda: self.update_button.config(state=tk.NORMAL))
                 return
 
             # Run the update command
@@ -477,9 +470,13 @@ class CHIMLauncher(tk.Tk):
             self.append_output(f"An error occurred during update: {e}\n")
 
         finally:
-            if hasattr(self, 'loading') and self.loading:
-                self.loading = False
-                self.after(0, self.hide_loading_widgets)
+            # Re-enable the Update button
+            self.after(0, lambda: self.update_button.config(state=tk.NORMAL))
+            # After update, change status label to green text immediately
+            self.after(0, lambda: self.update_status_label.config(
+                text="Server is updated to the latest version.",
+                fg="green"
+            ))
 
     def on_close(self):
         # Confirm exit with the user
@@ -547,8 +544,7 @@ class CHIMLauncher(tk.Tk):
     def configure_installed_components_thread(self):
         # Open a new command window, run the specified command, and close the window after execution
         cmd = 'wsl -d DwemerAI4Skyrim3 -u dwemer -- /usr/local/bin/conf_services'
-        subprocess.Popen(['cmd', '/c', cmd])  # Changed '/k' to '/c' to close the window after command execution
-        self.close_menu()  # Ensure the menu is closed after initiating the command
+        subprocess.Popen(['cmd', '/c', cmd])
 
     def open_chim_server_folder(self):
         threading.Thread(target=self.open_chim_server_folder_thread, daemon=True).start()
@@ -724,7 +720,6 @@ class CHIMLauncher(tk.Tk):
     def install_mimic3(self):
         threading.Thread(target=self.run_command_in_new_window, args=('wsl -d DwemerAI4Skyrim3 -u dwemer -- /home/dwemer/mimic3/ddistro_install.sh',), daemon=True).start()
     
-    # **Updated Debugging menu method**
     def open_debugging_menu(self):
         # Create a new Toplevel window
         debug_window = tk.Toplevel(self)
@@ -777,7 +772,7 @@ class CHIMLauncher(tk.Tk):
             btn.pack(pady=5)
             self.add_hover_effects(btn)
 
-    # **New Methods for Debugging Buttons**
+    # New Methods for Debugging Buttons
 
     def open_terminal(self):
         """Opens a new terminal window with the specified command."""
@@ -793,6 +788,120 @@ class CHIMLauncher(tk.Tk):
         """Opens a new terminal window to view the latest XTTS logs."""
         cmd = 'wsl -d DwemerAI4Skyrim3 -u dwemer -- tail -n 100 -f /home/dwemer/xtts-api-server/log.txt'
         threading.Thread(target=self.run_command_in_new_window, args=(cmd,), daemon=True).start()
+        
+    # Updated methods for version checking
+    def get_current_server_version(self):
+        """Get the current server version by reading the version file directly."""
+        try:
+            version_file_path = r'\\wsl$\DwemerAI4Skyrim3\var\www\html\HerikaServer\.version.txt'
+            with open(version_file_path, 'r') as file:
+                version = file.read().strip()
+                return version
+        except Exception as e:
+            print(f"Exception in get_current_server_version: {e}")
+            return None
+
+    def get_git_version(self):
+        """Get the latest server version from GitHub."""
+        url = "https://raw.githubusercontent.com/abeiro/HerikaServer/aiagent/.version.txt"
+        try:
+            response = requests.get(url, timeout=2)
+            if response.status_code == 200:
+                return response.text.strip()
+            else:
+                print(f"get_git_version failed with status code: {response.status_code}")
+                return None
+        except Exception as e:
+            print(f"Exception in get_git_version: {e}")
+            return None
+
+    def compare_versions(self, v1, v2):
+        """Compare two version strings.
+
+        Returns:
+            -1 if v1 < v2
+             0 if v1 == v2
+             1 if v1 > v2
+        """
+        v1_parts = [int(part) for part in v1.strip().split('.')]
+        v2_parts = [int(part) for part in v2.strip().split('.')]
+        # Pad the shorter version with zeros
+        length = max(len(v1_parts), len(v2_parts))
+        v1_parts.extend([0] * (length - len(v1_parts)))
+        v2_parts.extend([0] * (length - len(v2_parts)))
+        for i in range(length):
+            if v1_parts[i] < v2_parts[i]:
+                return -1
+            elif v1_parts[i] > v2_parts[i]:
+                return 1
+        return 0
+
+    def start_update_status_animation(self):
+        """Start the animation for the update status label."""
+        if not self.update_status_animation_running:
+            self.update_status_animation_running = True
+            self.update_status_animation_dots = 0
+            self.update_update_status_animation()
+
+    def update_update_status_animation(self):
+        """Update the update status label with animated dots."""
+        if self.update_status_animation_running:
+            dots = '.' * (self.update_status_animation_dots % 4)
+            self.update_status_label.config(text=f"Checking server update status{dots}")
+            self.update_status_animation_dots += 1
+            self.after(500, self.update_update_status_animation)  # Update every 500ms
+
+    def stop_update_status_animation(self):
+        """Stop the animation for the update status label."""
+        self.update_status_animation_running = False
+
+    def check_for_updates(self):
+        """Check if a newer server version is available and update the status label."""
+        # Start the animation
+        self.after(0, self.start_update_status_animation)
+
+        # Start threads to get versions concurrently
+        current_version = [None]
+        git_version = [None]
+
+        def get_current_version():
+            current_version[0] = self.get_current_server_version()
+
+        def get_git_version():
+            git_version[0] = self.get_git_version()
+
+        threads = [
+            threading.Thread(target=get_current_version),
+            threading.Thread(target=get_git_version)
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        # Stop the animation
+        self.after(0, self.stop_update_status_animation)
+
+        if current_version[0] and git_version[0]:
+            comparison = self.compare_versions(current_version[0], git_version[0])
+            if comparison < 0:
+                # Update status label to indicate update is available (Red Text)
+                self.after(0, lambda: self.update_status_label.config(
+                    text="Server update is available. Click Update Server.",
+                    fg="red"
+                ))
+            else:
+                # Update status label to indicate server is up to date (Green Text)
+                self.after(0, lambda: self.update_status_label.config(
+                    text="Server is updated to the latest version.",
+                    fg="green"
+                ))
+        else:
+            # Could not retrieve version information
+            self.after(0, lambda: self.update_status_label.config(
+                text="Could not retrieve version information.",
+                fg="yellow"
+            ))
 
 if __name__ == "__main__":
     app = CHIMLauncher()
