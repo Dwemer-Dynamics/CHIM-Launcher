@@ -44,9 +44,6 @@ class CHIMLauncher(tk.Tk):
         # Set the window icon
         self.set_window_icon('CHIM.png') 
 
-        # Automatically start the WSL process on launch
-        self.after(0, self.start_wsl)
-
         # Bind the window close event to on_close method
         self.protocol("WM_DELETE_WINDOW", self.on_close)
         
