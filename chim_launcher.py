@@ -474,7 +474,7 @@ class CHIMLauncher(tk.Tk):
             self.after(0, lambda: self.update_button.config(state=tk.NORMAL))
             # After update, change status label to green text immediately
             self.after(0, lambda: self.update_status_label.config(
-                text="Server is updated to the latest version.",
+                text="CHIM Server is up-to-date",
                 fg="green"
             ))
 
@@ -887,7 +887,7 @@ class CHIMLauncher(tk.Tk):
             if comparison < 0:
                 # Update status label to indicate update is available (Red Text)
                 self.after(0, lambda: self.update_status_label.config(
-                    text="CHIM Server Update Available.",
+                    text="CHIM Server Update Available",
                     fg="red"
                 ))
             else:
