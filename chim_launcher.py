@@ -195,7 +195,7 @@ class CHIMLauncher(tk.Tk):
         # Display update status
         self.update_status_label = tk.Label(
             top_frame,
-            text="Checking server update status",
+            text="Checking for Updates",
             fg="white",
             bg="#212529",
             font=("Arial", 10)
@@ -847,7 +847,7 @@ class CHIMLauncher(tk.Tk):
         """Update the update status label with animated dots."""
         if self.update_status_animation_running:
             dots = '.' * (self.update_status_animation_dots % 4)
-            self.update_status_label.config(text=f"Checking server update status{dots}")
+            self.update_status_label.config(text=f"Checking for Updates{dots}")
             self.update_status_animation_dots += 1
             self.after(500, self.update_update_status_animation)  # Update every 500ms
 
@@ -887,13 +887,13 @@ class CHIMLauncher(tk.Tk):
             if comparison < 0:
                 # Update status label to indicate update is available (Red Text)
                 self.after(0, lambda: self.update_status_label.config(
-                    text="Server update is available. Click Update Server.",
+                    text="Server Update Available.",
                     fg="red"
                 ))
             else:
                 # Update status label to indicate server is up to date (Green Text)
                 self.after(0, lambda: self.update_status_label.config(
-                    text="Server is updated to the latest version.",
+                    text="Server Updated",
                     fg="green"
                 ))
         else:
