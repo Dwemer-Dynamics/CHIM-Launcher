@@ -887,13 +887,13 @@ class CHIMLauncher(tk.Tk):
             if comparison < 0:
                 # Update status label to indicate update is available (Red Text)
                 self.after(0, lambda: self.update_status_label.config(
-                    text="Server Update Available.",
+                    text="CHIM Server Update Available.",
                     fg="red"
                 ))
             else:
                 # Update status label to indicate server is up to date (Green Text)
                 self.after(0, lambda: self.update_status_label.config(
-                    text="Server Updated",
+                    text="CHIM Server is up-to-date",
                     fg="green"
                 ))
         else:
