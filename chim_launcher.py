@@ -601,7 +601,7 @@ class CHIMLauncher(tk.Tk):
 
         install_xtts_button = tk.Button(
             button_frame,
-            text="Install XTTS",
+            text="Install CHIM XTTS",
             command=self.install_xtts,
             **button_style
         )
@@ -759,7 +759,7 @@ class CHIMLauncher(tk.Tk):
         debugging_commands = [
             ("Open Terminal", self.open_terminal),
             ("View Memory Usage", self.view_memory_usage),
-            ("View Distro XTTS Logs", self.view_xtts_logs)
+            ("View CHIM XTTS Logs", self.view_xtts_logs)
         ]
 
         for text, command in debugging_commands:
