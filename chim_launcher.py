@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import font, scrolledtext, messagebox
+from tkinter import ttk  # Added import for ttk
 import subprocess
 import threading
 import re
@@ -558,7 +559,7 @@ class CHIMLauncher(tk.Tk):
         # Create a new Toplevel window
         submenu_window = tk.Toplevel(self)
         submenu_window.title("Install Components")
-        submenu_window.geometry("500x400")  # Increased size
+        submenu_window.geometry("500x630")  # Adjusted size to accommodate the table
         submenu_window.configure(bg="#212529")
         submenu_window.resizable(False, False)
 
@@ -634,6 +635,15 @@ class CHIMLauncher(tk.Tk):
         )
         install_mimic3_button.pack(pady=5)
         self.add_hover_effects(install_mimic3_button)
+        
+        install_localwhisper_button = tk.Button(
+            button_frame,
+            text="Install LocalWhisper",
+            command=self.install_localwhisper,
+            **button_style
+        )
+        install_localwhisper_button.pack(pady=5)
+        self.add_hover_effects(install_localwhisper_button)
 
         # README Section
         readme_frame = tk.LabelFrame(
@@ -698,6 +708,59 @@ class CHIMLauncher(tk.Tk):
         )
         amd_label.pack(pady=(0, 10), padx=0, fill="x")
 
+        # GPU Usage Section
+        gpu_header = tk.Label(
+            readme_frame,
+            text="GPU Usage",
+            bg="#212529",
+            fg="white",
+            font=("Arial", 12, "bold"),
+            anchor="w"
+        )
+        gpu_header.pack(pady=(10, 5), padx=0, fill="x")
+
+        # Create a Treeview widget for the GPU Usage table
+        columns = ("Component", "VRAM Usage")
+        gpu_tree = ttk.Treeview(readme_frame, columns=columns, show='headings', height=5)
+        
+        # Define headings
+        gpu_tree.heading("Component", text="Component")
+        gpu_tree.heading("VRAM Usage", text="VRAM Usage")
+        
+        # Define column widths
+        gpu_tree.column("Component", anchor="w", width=150)
+        gpu_tree.column("VRAM Usage", anchor="w", width=150)
+        
+        # Insert data
+        gpu_data = [
+            ("CHIM XTTS", "4GB VRAM"),
+            ("LocalWhisper", "2-4GB VRAM"),
+            ("MeloTTS", "Less than 1GB VRAM"),
+            ("Mimic3", "Less than 1GB VRAM"),
+            ("Minime-T5", "Less than 1GB VRAM")
+        ]
+        
+        for component, vram in gpu_data:
+            gpu_tree.insert("", "end", values=(component, vram))
+        
+        # Style the Treeview
+        style = ttk.Style()
+        style.theme_use("default")
+        style.configure("Treeview",
+                        background="#212529",
+                        foreground="white",
+                        fieldbackground="#212529",
+                        font=("Arial", 10))
+        style.configure("Treeview.Heading",
+                        background="#031633",
+                        foreground="white",
+                        font=("Arial", 10, "bold"))
+        style.map("Treeview.Heading",
+                        background=[('active', "#031633")],
+                        foreground=[('active', "white")])
+        
+        gpu_tree.pack(pady=(0, 10), padx=0, fill="x")
+
     def run_command_in_new_window(self, cmd):
         try:
             # Open a new command window and run the specified command
@@ -720,11 +783,14 @@ class CHIMLauncher(tk.Tk):
     def install_mimic3(self):
         threading.Thread(target=self.run_command_in_new_window, args=('wsl -d DwemerAI4Skyrim3 -u dwemer -- /home/dwemer/mimic3/ddistro_install.sh',), daemon=True).start()
     
+    def install_localwhisper(self):
+        threading.Thread(target=self.run_command_in_new_window, args=('wsl -d DwemerAI4Skyrim3 -u dwemer -- /home/dwemer/remote-faster-whisper/ddistro_install.sh',), daemon=True).start()
+    
     def open_debugging_menu(self):
         # Create a new Toplevel window
         debug_window = tk.Toplevel(self)
         debug_window.title("Debugging")
-        debug_window.geometry("400x180")  # Adjust size as needed
+        debug_window.geometry("400x260")  # Increased height to accommodate more buttons
         debug_window.configure(bg="#212529")
         debug_window.resizable(False, False)
 
@@ -759,7 +825,9 @@ class CHIMLauncher(tk.Tk):
         debugging_commands = [
             ("Open Terminal", self.open_terminal),
             ("View Memory Usage", self.view_memory_usage),
-            ("View CHIM XTTS Logs", self.view_xtts_logs)
+            ("View CHIM XTTS Logs", self.view_xtts_logs),
+            ("View LocalWhisper Logs", self.view_localwhisper_logs),
+            ("View Apache Logs", self.view_apacheerror_logs)
         ]
 
         for text, command in debugging_commands:
@@ -772,8 +840,6 @@ class CHIMLauncher(tk.Tk):
             btn.pack(pady=5)
             self.add_hover_effects(btn)
 
-    # New Methods for Debugging Buttons
-
     def open_terminal(self):
         """Opens a new terminal window with the specified command."""
         cmd = 'wsl -d DwemerAI4Skyrim3 -u dwemer -- /usr/local/bin/terminal'
@@ -785,8 +851,18 @@ class CHIMLauncher(tk.Tk):
         threading.Thread(target=self.run_command_in_new_window, args=(cmd,), daemon=True).start()
 
     def view_xtts_logs(self):
-        """Opens a new terminal window to view the latest XTTS logs."""
+        """Opens a new terminal window to view the CHIM XTTS logs."""
         cmd = 'wsl -d DwemerAI4Skyrim3 -u dwemer -- tail -n 100 -f /home/dwemer/xtts-api-server/log.txt'
+        threading.Thread(target=self.run_command_in_new_window, args=(cmd,), daemon=True).start()
+    
+    def view_localwhisper_logs(self):
+        """Opens a new terminal window to view the LocalWhisper logs."""
+        cmd = 'wsl -d DwemerAI4Skyrim3 -u dwemer -- tail -n 100 -f /home/dwemer/remote-faster-whisper/log.txt'
+        threading.Thread(target=self.run_command_in_new_window, args=(cmd,), daemon=True).start()
+        
+    def view_apacheerror_logs(self):
+        """Opens a new terminal window to view the Apache error logs."""
+        cmd = 'wsl -d DwemerAI4Skyrim3 -u dwemer -- tail -n 100 -f /var/log/apache2/error.log'
         threading.Thread(target=self.run_command_in_new_window, args=(cmd,), daemon=True).start()
         
     # Updated methods for version checking
