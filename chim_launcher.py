@@ -214,6 +214,18 @@ class CHIMLauncher(tk.Tk):
         )
         repo_link.pack(pady=5)
         repo_link.bind("<Button-1>", lambda e: webbrowser.open_new("https://github.com/abeiro/HerikaServer/tree/aiagent"))
+        
+        manual_link = tk.Label(
+            top_frame,
+            text="Read the Manual",
+            fg="white",
+            bg="#212529",
+            font=("Arial", 10),
+            cursor="hand2"
+        )
+        manual_link.pack(pady=5)
+        manual_link.bind("<Button-1>", lambda e: webbrowser.open_new("https://docs.google.com/document/d/12KBar_VTn0xuf2pYw9MYQd7CKktx4JNr_2hiv4kOx3Q/edit?tab=t.0"))
+
 
         # Create the main frame to hold loading_frame and output_area
         self.main_frame = tk.Frame(self, bg="#212529")
