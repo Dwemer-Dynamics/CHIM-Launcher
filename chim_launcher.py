@@ -802,7 +802,7 @@ class CHIMLauncher(tk.Tk):
         # Create a new Toplevel window
         debug_window = tk.Toplevel(self)
         debug_window.title("Debugging")
-        debug_window.geometry("400x260")  # Increased height to accommodate more buttons
+        debug_window.geometry("400x280")  # Increased height to accommodate more buttons
         debug_window.configure(bg="#212529")
         debug_window.resizable(False, False)
 
@@ -838,6 +838,7 @@ class CHIMLauncher(tk.Tk):
             ("Open Terminal", self.open_terminal),
             ("View Memory Usage", self.view_memory_usage),
             ("View CHIM XTTS Logs", self.view_xtts_logs),
+            ("View MeloTTS Logs", self.view_melotts_logs),
             ("View LocalWhisper Logs", self.view_localwhisper_logs),
             ("View Apache Logs", self.view_apacheerror_logs)
         ]
@@ -860,6 +861,11 @@ class CHIMLauncher(tk.Tk):
     def view_memory_usage(self):
         """Opens a new terminal window to view memory usage using htop."""
         cmd = 'wsl -d DwemerAI4Skyrim3 -- htop'
+        threading.Thread(target=self.run_command_in_new_window, args=(cmd,), daemon=True).start()
+    
+    def view_melotts_logs(self):
+        """Opens a new terminal window to view the MeloTTS logs."""
+        cmd = 'wsl -d DwemerAI4Skyrim3 -u dwemer -- tail -n 100 -f /home/dwemer/MeloTTS/melo/log.txt'
         threading.Thread(target=self.run_command_in_new_window, args=(cmd,), daemon=True).start()
 
     def view_xtts_logs(self):
