@@ -802,7 +802,7 @@ class CHIMLauncher(tk.Tk):
         # Create a new Toplevel window
         debug_window = tk.Toplevel(self)
         debug_window.title("Debugging")
-        debug_window.geometry("400x280")  # Increased height to accommodate more buttons
+        debug_window.geometry("440x350")  # Made window wider to accommodate wider buttons
         debug_window.configure(bg="#212529")
         debug_window.resizable(False, False)
 
@@ -825,13 +825,17 @@ class CHIMLauncher(tk.Tk):
             'bd': 1,
             'relief': tk.GROOVE,
             'highlightthickness': 0,
-            'width': 25,
+            'width': 29,  # Increased width from 25 to 29
             'cursor': 'hand2'  # Change cursor on hover
         }
 
         # Create a frame for the buttons
         debug_button_frame = tk.Frame(debug_window, bg="#212529")
         debug_button_frame.pack(pady=20)
+
+        # Get current branch for the button text
+        current_branch = self.get_current_branch()
+        branch_display = f"Switch Branch (Current: {current_branch})" if current_branch else "Switch Branch"
 
         # Define the debugging buttons with their respective commands
         debugging_commands = [
@@ -840,7 +844,8 @@ class CHIMLauncher(tk.Tk):
             ("View CHIM XTTS Logs", self.view_xtts_logs),
             ("View MeloTTS Logs", self.view_melotts_logs),
             ("View LocalWhisper Logs", self.view_localwhisper_logs),
-            ("View Apache Logs", self.view_apacheerror_logs)
+            ("View Apache Logs", self.view_apacheerror_logs),
+            (branch_display, lambda: self.switch_branch(debug_window))  # Pass debug_window to switch_branch
         ]
 
         for text, command in debugging_commands:
@@ -883,6 +888,77 @@ class CHIMLauncher(tk.Tk):
         cmd = 'wsl -d DwemerAI4Skyrim3 -u dwemer -- tail -n 100 -f /var/log/apache2/error.log'
         threading.Thread(target=self.run_command_in_new_window, args=(cmd,), daemon=True).start()
         
+    def switch_branch(self, debug_window):
+        """Switches between Release and Dev branches based on current branch."""
+        try:
+            # Get current branch
+            current_branch = self.get_current_branch()
+            
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = 0  # SW_HIDE
+            
+            if current_branch == "aiagent":
+                # Currently on Release branch, switch to Dev
+                if messagebox.askyesno("Switch Branch", "Currently on Release branch. Switch to Dev branch?"):
+                    cmd = ["wsl", "-d", "DwemerAI4Skyrim3", "-u", "dwemer", "--", "bash", "-c", 
+                          "cd /var/www/html/HerikaServer && "
+                          "git stash save 'Auto-stash before switching branch' && "
+                          "git fetch origin && "
+                          "git checkout -B dev origin/dev"]
+                    result = subprocess.run(cmd, 
+                                         capture_output=True, 
+                                         text=True,
+                                         startupinfo=startupinfo,
+                                         creationflags=subprocess.CREATE_NO_WINDOW)
+                    
+                    self.append_output(f"Switching to Dev branch...\n")
+                    
+                    if result.stderr and not any(msg in result.stderr for msg in [
+                        "Reset branch",
+                        "No local changes to save",
+                        "Switched to"
+                    ]):
+                        self.append_output(f"Errors:\n{result.stderr}\n")
+                    
+                    self.append_output("Successfully switched to Dev branch.\n")
+                    debug_window.destroy()  # Close the debug window
+                    
+            elif current_branch == "dev":
+                # Currently on Dev branch, switch to Release
+                if messagebox.askyesno("Switch Branch", "Currently on Dev branch. Switch to Release branch?"):
+                    cmd = ["wsl", "-d", "DwemerAI4Skyrim3", "-u", "dwemer", "--", "bash", "-c",
+                          "cd /var/www/html/HerikaServer && "
+                          "git stash save 'Auto-stash before switching branch' && "
+                          "git fetch origin && "
+                          "git checkout -B aiagent origin/aiagent"]
+                    result = subprocess.run(cmd, 
+                                         capture_output=True, 
+                                         text=True,
+                                         startupinfo=startupinfo,
+                                         creationflags=subprocess.CREATE_NO_WINDOW)
+                    
+                    self.append_output(f"Switching to Release branch...\n")
+                    
+                    if result.stderr and not any(msg in result.stderr for msg in [
+                        "Reset branch",
+                        "No local changes to save",
+                        "Switched to"
+                    ]):
+                        self.append_output(f"Errors:\n{result.stderr}\n")
+                    
+                    self.append_output("Successfully switched to Release branch.\n")
+                    debug_window.destroy()  # Close the debug window
+            else:
+                messagebox.showerror("Branch Error", f"Unexpected current branch: {current_branch}")
+                return
+
+            # Refresh the update status
+            threading.Thread(target=self.check_for_updates, daemon=True).start()
+            
+        except Exception as e:
+            self.append_output(f"Error switching branch: {str(e)}\n")
+
     # Updated methods for version checking
     def get_current_server_version(self):
         """Get the current server version by reading the version file directly."""
@@ -930,6 +1006,24 @@ class CHIMLauncher(tk.Tk):
                 return 1
         return 0
 
+    def get_current_branch(self):
+        """Get the current git branch."""
+        try:
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = 0  # SW_HIDE
+
+            cmd = ["wsl", "-d", "DwemerAI4Skyrim3", "-u", "dwemer", "--", "cd", "/var/www/html/HerikaServer", "&&", "git", "rev-parse", "--abbrev-ref", "HEAD"]
+            result = subprocess.run(cmd, 
+                                  capture_output=True, 
+                                  text=True, 
+                                  startupinfo=startupinfo,
+                                  creationflags=subprocess.CREATE_NO_WINDOW)
+            return result.stdout.strip()
+        except Exception as e:
+            print(f"Exception in get_current_branch: {e}")
+            return None
+
     def start_update_status_animation(self):
         """Start the animation for the update status label."""
         if not self.update_status_animation_running:
@@ -954,9 +1048,10 @@ class CHIMLauncher(tk.Tk):
         # Start the animation
         self.after(0, self.start_update_status_animation)
 
-        # Start threads to get versions concurrently
+        # Start threads to get versions and branch concurrently
         current_version = [None]
         git_version = [None]
+        current_branch = [None]
 
         def get_current_version():
             current_version[0] = self.get_current_server_version()
@@ -964,9 +1059,13 @@ class CHIMLauncher(tk.Tk):
         def get_git_version():
             git_version[0] = self.get_git_version()
 
+        def get_branch():
+            current_branch[0] = self.get_current_branch()
+
         threads = [
             threading.Thread(target=get_current_version),
-            threading.Thread(target=get_git_version)
+            threading.Thread(target=get_git_version),
+            threading.Thread(target=get_branch)
         ]
         for t in threads:
             t.start()
@@ -976,24 +1075,26 @@ class CHIMLauncher(tk.Tk):
         # Stop the animation
         self.after(0, self.stop_update_status_animation)
 
+        branch_text = f" ({current_branch[0]})" if current_branch[0] else ""
+
         if current_version[0] and git_version[0]:
             comparison = self.compare_versions(current_version[0], git_version[0])
             if comparison < 0:
                 # Update status label to indicate update is available (Red Text)
                 self.after(0, lambda: self.update_status_label.config(
-                    text="CHIM Server Update Available",
+                    text=f"CHIM Server Update Available{branch_text}",
                     fg="red"
                 ))
             else:
                 # Update status label to indicate server is up to date (Green Text)
                 self.after(0, lambda: self.update_status_label.config(
-                    text="CHIM Server is up-to-date",
+                    text=f"CHIM Server is up-to-date{branch_text}",
                     fg="green"
                 ))
         else:
             # Could not retrieve version information
             self.after(0, lambda: self.update_status_label.config(
-                text="Could not retrieve version information.",
+                text=f"Could not retrieve version information{branch_text}",
                 fg="yellow"
             ))
 
