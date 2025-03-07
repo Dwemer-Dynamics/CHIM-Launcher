@@ -485,11 +485,8 @@ class CHIMLauncher(tk.Tk):
         finally:
             # Re-enable the Update button
             self.after(0, lambda: self.update_button.config(state=tk.NORMAL))
-            # After update, change status label to green text immediately
-            self.after(0, lambda: self.update_status_label.config(
-                text="CHIM Server is up-to-date",
-                fg="green"
-            ))
+            # Check for updates after the update process completes (with a small delay to ensure files are updated)
+            self.after(2000, lambda: threading.Thread(target=self.check_for_updates, daemon=True).start())
 
     def on_close(self):
         # Confirm exit with the user
@@ -924,6 +921,9 @@ class CHIMLauncher(tk.Tk):
                     self.append_output("Successfully switched to Dev branch.\n")
                     debug_window.destroy()  # Close the debug window
                     
+                    # Check for updates after switching branch
+                    self.after(1000, lambda: threading.Thread(target=self.check_for_updates, daemon=True).start())
+                    
             elif current_branch == "dev":
                 # Currently on Dev branch, switch to Release
                 if messagebox.askyesno("Switch Branch", "Currently on Dev branch. Switch to Release branch?"):
@@ -949,13 +949,39 @@ class CHIMLauncher(tk.Tk):
                     
                     self.append_output("Successfully switched to Release branch.\n")
                     debug_window.destroy()  # Close the debug window
+                    
+                    # Check for updates after switching branch
+                    self.after(1000, lambda: threading.Thread(target=self.check_for_updates, daemon=True).start())
+                    
             else:
-                messagebox.showerror("Branch Error", f"Unexpected current branch: {current_branch}")
-                return
+                # Unexpected branch, switch back to aiagent
+                if messagebox.askyesno("Switch Branch", f"Currently on unexpected branch ({current_branch}). Switch to Release branch?"):
+                    cmd = ["wsl", "-d", "DwemerAI4Skyrim3", "-u", "dwemer", "--", "bash", "-c",
+                          "cd /var/www/html/HerikaServer && "
+                          "git stash save 'Auto-stash before switching branch' && "
+                          "git fetch origin && "
+                          "git checkout -B aiagent origin/aiagent"]
+                    result = subprocess.run(cmd, 
+                                         capture_output=True, 
+                                         text=True,
+                                         startupinfo=startupinfo,
+                                         creationflags=subprocess.CREATE_NO_WINDOW)
+                    
+                    self.append_output(f"Switching to Release branch...\n")
+                    
+                    if result.stderr and not any(msg in result.stderr for msg in [
+                        "Reset branch",
+                        "No local changes to save",
+                        "Switched to"
+                    ]):
+                        self.append_output(f"Errors:\n{result.stderr}\n")
+                    
+                    self.append_output("Successfully switched to Release branch.\n")
+                    debug_window.destroy()  # Close the debug window
+                    
+                    # Check for updates after switching branch
+                    self.after(1000, lambda: threading.Thread(target=self.check_for_updates, daemon=True).start())
 
-            # Refresh the update status
-            threading.Thread(target=self.check_for_updates, daemon=True).start()
-            
         except Exception as e:
             self.append_output(f"Error switching branch: {str(e)}\n")
 
@@ -972,9 +998,17 @@ class CHIMLauncher(tk.Tk):
             return None
 
     def get_git_version(self):
-        """Get the latest server version from GitHub."""
-        url = "https://raw.githubusercontent.com/abeiro/HerikaServer/aiagent/.version.txt"
+        """Get the latest server version from GitHub based on current branch."""
         try:
+            # Get current branch first
+            current_branch = self.get_current_branch()
+            if not current_branch:
+                print("Could not determine current branch")
+                return None
+                
+            # Construct URL based on branch
+            url = f"https://raw.githubusercontent.com/abeiro/HerikaServer/{current_branch}/.version.txt"
+            
             response = requests.get(url, timeout=2)
             if response.status_code == 200:
                 return response.text.strip()
