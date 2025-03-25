@@ -799,7 +799,7 @@ class CHIMLauncher(tk.Tk):
         # Create a new Toplevel window
         debug_window = tk.Toplevel(self)
         debug_window.title("Debugging")
-        debug_window.geometry("440x350")  # Made window wider to accommodate wider buttons
+        debug_window.geometry("440x360")  # Made window taller to accommodate new button
         debug_window.configure(bg="#212529")
         debug_window.resizable(False, False)
 
@@ -842,6 +842,7 @@ class CHIMLauncher(tk.Tk):
             ("View MeloTTS Logs", self.view_melotts_logs),
             ("View LocalWhisper Logs", self.view_localwhisper_logs),
             ("View Apache Logs", self.view_apacheerror_logs),
+            ("Clean All Logs", self.clean_logs),  # Added new Clean Logs button
             (branch_display, lambda: self.switch_branch(debug_window))  # Pass debug_window to switch_branch
         ]
 
@@ -884,6 +885,61 @@ class CHIMLauncher(tk.Tk):
         """Opens a new terminal window to view the Apache error logs."""
         cmd = 'wsl -d DwemerAI4Skyrim3 -u dwemer -- tail -n 100 -f /var/log/apache2/error.log'
         threading.Thread(target=self.run_command_in_new_window, args=(cmd,), daemon=True).start()
+        
+    def clean_logs(self):
+        """Opens a new window to clean log files."""
+        # Create the batch file content
+        batch_content = '''@echo -------------------------------------------------------------------------------
+@echo This will backup and delete your log files! 
+@echo Existing log files will be renamed to log_name.bak  
+@echo Existing backups will be overwritten. 
+@echo Make sure the server is not running. 
+@echo -------------------------------------------------------------------------------
+
+@%SystemRoot%\\System32\\choice.exe /C YN /N /M "Are you sure you want to delete log files? [Y/N] "
+@IF NOT ErrorLevel 2 (
+  @echo Deleting log files...
+  IF EXIST "\\\\wsl.localhost\\DwemerAI4Skyrim3\\var\\log\\apache2\\error.log" (
+    del "\\\\wsl.localhost\\DwemerAI4Skyrim3\\var\\log\\apache2\\error.bak"
+    ren "\\\\wsl.localhost\\DwemerAI4Skyrim3\\var\\log\\apache2\\error.log" "error.bak"
+  )
+  IF EXIST "\\\\wsl.localhost\\DwemerAI4Skyrim3\\var\\log\\apache2\\other_vhosts_access.log" (
+    del "\\\\wsl.localhost\\DwemerAI4Skyrim3\\var\\log\\apache2\\other_vhosts_access.bak"
+    ren "\\\\wsl.localhost\\DwemerAI4Skyrim3\\var\\log\\apache2\\other_vhosts_access.log" "other_vhosts_access.bak"
+  )
+  IF EXIST "\\\\wsl.localhost\\DwemerAI4Skyrim3\\var\\www\\html\\HerikaServer\\log\\debugStream.log" (
+    del "\\\\wsl.localhost\\DwemerAI4Skyrim3\\var\\www\\html\\HerikaServer\\log\\debugStream.bak"
+    ren "\\\\wsl.localhost\\DwemerAI4Skyrim3\\var\\www\\html\\HerikaServer\\log\\debugStream.log" "debugStream.bak"
+  )
+  IF EXIST "\\\\wsl.localhost\\DwemerAI4Skyrim3\\var\\www\\html\\HerikaServer\\log\\context_sent_to_llm.log" (
+    del "\\\\wsl.localhost\\DwemerAI4Skyrim3\\var\\www\\html\\HerikaServer\\log\\context_sent_to_llm.bak"
+    ren "\\\\wsl.localhost\\DwemerAI4Skyrim3\\var\\www\\html\\HerikaServer\\log\\context_sent_to_llm.log" "context_sent_to_llm.bak"
+  )
+  IF EXIST "\\\\wsl.localhost\\DwemerAI4Skyrim3\\var\\www\\html\\HerikaServer\\log\\output_from_llm.log" (
+    del "\\\\wsl.localhost\\DwemerAI4Skyrim3\\var\\www\\html\\HerikaServer\\log\\output_from_llm.bak"
+    ren "\\\\wsl.localhost\\DwemerAI4Skyrim3\\var\\www\\html\\HerikaServer\\log\\output_from_llm.log" "output_from_llm.bak"
+  )
+  IF EXIST "\\\\wsl.localhost\\DwemerAI4Skyrim3\\var\\www\\html\\HerikaServer\\log\\output_to_plugin.log" (
+    del "\\\\wsl.localhost\\DwemerAI4Skyrim3\\var\\www\\html\\HerikaServer\\log\\output_to_plugin.bak"
+    ren "\\\\wsl.localhost\\DwemerAI4Skyrim3\\var\\www\\html\\HerikaServer\\log\\output_to_plugin.log" "output_to_plugin.bak"
+  )
+  IF EXIST "\\\\wsl.localhost\\DwemerAI4Skyrim3\\var\\www\\html\\HerikaServer\\log\\minai.log" (
+    del "\\\\wsl.localhost\\DwemerAI4Skyrim3\\var\\www\\html\\HerikaServer\\log\\minai.bak"
+    ren "\\\\wsl.localhost\\DwemerAI4Skyrim3\\var\\www\\html\\HerikaServer\\log\\minai.log" "minai.bak"
+  )
+  @echo Log files deleted. 
+) ELSE (
+  @echo Quit without deleting log files. 
+)
+@pause'''
+
+        # Create a temporary batch file
+        temp_batch = os.path.join(os.getenv('TEMP'), 'clean_logs.bat')
+        with open(temp_batch, 'w') as f:
+            f.write(batch_content)
+
+        # Run the batch file
+        threading.Thread(target=self.run_command_in_new_window, args=(temp_batch,), daemon=True).start()
         
     def switch_branch(self, debug_window):
         """Switches between Release and Dev branches based on current branch."""
