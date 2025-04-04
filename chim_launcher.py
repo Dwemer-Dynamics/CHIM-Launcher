@@ -26,7 +26,7 @@ class CHIMLauncher(tk.Tk):
         super().__init__()
         self.title("CHIM")
         self.geometry("400x800")  
-        self.configure(bg="#212529")
+        self.configure(bg="#2C2C2C")
         self.resizable(False, False)  
 
         self.bold_font = font.Font(family="Arial", size=12, weight="bold")
@@ -68,7 +68,7 @@ class CHIMLauncher(tk.Tk):
 
     def create_widgets(self):
         # Create a frame for the top widgets
-        top_frame = tk.Frame(self, bg="#212529")
+        top_frame = tk.Frame(self, bg="#2C2C2C")
         top_frame.pack(side=tk.TOP, fill=tk.X, pady=10)
 
         # Load the image
@@ -81,7 +81,7 @@ class CHIMLauncher(tk.Tk):
             photo = None
 
         if photo:
-            image_label = tk.Label(top_frame, image=photo, bg="#212529")
+            image_label = tk.Label(top_frame, image=photo, bg="#2C2C2C")
             image_label.photo = photo  # Keep a reference to prevent garbage collection
             image_label.pack(pady=10)
         else:
@@ -90,24 +90,27 @@ class CHIMLauncher(tk.Tk):
                 top_frame,
                 text="CHIM",
                 fg="white",
-                bg="#212529",
+                bg="#2C2C2C",
                 font=("Arial", 24)
             )
             title_label.pack(pady=10)
 
         # Create a frame for buttons within top_frame
-        button_frame = tk.Frame(top_frame, bg="#212529")
+        button_frame = tk.Frame(top_frame, bg="#2C2C2C")
         button_frame.pack(pady=10)
 
         # Style options for buttons
         button_style = {
-            'bg': '#031633',         
+            'bg': '#5E0505',         # Deep red
             'fg': 'white',          
-            'activebackground': '#021b4d',
+            'activebackground': '#4A0404',  # Darker shade for hover
             'activeforeground': 'white',
             'padx': 10,              
             'pady': 5,               
-            'cursor': 'hand2'        
+            'cursor': 'hand2',
+            'relief': 'groove',
+            'borderwidth': 2,
+            'highlightthickness': 0
         }
 
         # Arrange buttons vertically using pack
@@ -198,7 +201,7 @@ class CHIMLauncher(tk.Tk):
             top_frame,
             text="Checking for Updates",
             fg="white",
-            bg="#212529",
+            bg="#2C2C2C",
             font=("Arial", 10)
         )
         self.update_status_label.pack(pady=5)
@@ -208,7 +211,7 @@ class CHIMLauncher(tk.Tk):
             top_frame,
             text="View on GitHub",
             fg="white",
-            bg="#212529",
+            bg="#2C2C2C",
             font=("Arial", 10),
             cursor="hand2"
         )
@@ -219,7 +222,7 @@ class CHIMLauncher(tk.Tk):
             top_frame,
             text="Read the Manual",
             fg="white",
-            bg="#212529",
+            bg="#2C2C2C",
             font=("Arial", 10),
             cursor="hand2"
         )
@@ -228,18 +231,18 @@ class CHIMLauncher(tk.Tk):
 
 
         # Create the main frame to hold loading_frame and output_area
-        self.main_frame = tk.Frame(self, bg="#212529")
+        self.main_frame = tk.Frame(self, bg="#2C2C2C")
         self.main_frame.pack(fill=tk.BOTH, expand=True)
         self.main_frame.grid_rowconfigure(0, weight=3)  
         self.main_frame.grid_rowconfigure(1, weight=7)  
         self.main_frame.grid_columnconfigure(0, weight=1)
 
         # Create the loading frame but do not pack it yet
-        self.loading_frame = tk.Frame(self.main_frame, bg="#212529")
+        self.loading_frame = tk.Frame(self.main_frame, bg="#2C2C2C")
         self.loading_label = tk.Label(
             self.loading_frame,
             fg="white",
-            bg="#212529",
+            bg="#2C2C2C",
             font=("Arial", 12)
         )
         self.loading_label.pack(side=tk.LEFT, padx=5)
@@ -257,9 +260,9 @@ class CHIMLauncher(tk.Tk):
         
     def add_hover_effects(self, button):
         def on_enter(e):
-            button['background'] = '#021b4d'  
+            button['background'] = '#4A0404'  # Hover color
         def on_leave(e):
-            button['background'] = '#031633' 
+            button['background'] = '#5E0505'  # Deep red
         button.bind('<Enter>', on_enter)
         button.bind('<Leave>', on_leave)
 
@@ -267,15 +270,18 @@ class CHIMLauncher(tk.Tk):
         """Start the animated dots on the Start button."""
         if not self.animation_running:
             self.animation_running = True
-            self.animation_dots = 1
+            self.animation_dots = 0
+            self.start_button.config(text="Server is Starting")  # Set initial text
             self.update_animation()
 
     def update_animation(self):
         """Update the Start button's text with animated dots."""
         if self.animation_running and self.server_starting:
             dots = '.' * self.animation_dots
+            # Pad the dots with spaces to maintain consistent button width
+            dots = dots.ljust(3)  # Always use 3 spaces for dots
             self.start_button.config(text=f"Server is Starting {dots}")
-            self.animation_dots = self.animation_dots % 3 + 1
+            self.animation_dots = (self.animation_dots % 3) + 1
             self.after(500, self.update_animation)  # Update every 500ms
 
     def stop_animation(self):
@@ -304,7 +310,7 @@ class CHIMLauncher(tk.Tk):
 
         # Start the animation
         self.original_start_text = "Start Server"
-        self.start_button.config(text="Server is Starting .")
+        self.start_button.config(text="Server is Starting")  # Set initial text
         self.start_animation()
 
         # Start the WSL command in the background
@@ -569,7 +575,7 @@ class CHIMLauncher(tk.Tk):
         submenu_window = tk.Toplevel(self)
         submenu_window.title("Install Components")
         submenu_window.geometry("500x630")  # Adjusted size to accommodate the table
-        submenu_window.configure(bg="#212529")
+        submenu_window.configure(bg="#2C2C2C")
         submenu_window.resizable(False, False)
 
         # Set the window icon to CHIM.png
@@ -583,20 +589,20 @@ class CHIMLauncher(tk.Tk):
 
         # Style options for buttons
         button_style = {
-            'bg': "#031633",  # Updated button color
+            'bg': "#5E0505",  # Deep red
             'fg': "white",
-            'activebackground': "#021b4d",  # Updated active button color
+            'activebackground': "#4A0404",  # Hover color
             'activeforeground': "white",
-            'font': ("Arial", 12, "bold"),  # Specify font here
-            'bd': 1,
-            'relief': tk.GROOVE,
+            'font': ("Arial", 12, "bold"),
+            'relief': 'groove',
+            'borderwidth': 2,
             'highlightthickness': 0,
             'width': 30,
-            'cursor': 'hand2'  # Change cursor on hover
+            'cursor': 'hand2'
         }
 
         # Create a frame for the buttons
-        button_frame = tk.Frame(submenu_window, bg="#212529")
+        button_frame = tk.Frame(submenu_window, bg="#2C2C2C")
         button_frame.pack(pady=10)
 
         # Create buttons
@@ -658,7 +664,7 @@ class CHIMLauncher(tk.Tk):
         readme_frame = tk.LabelFrame(
             submenu_window,
             text="READ THIS!",
-            bg="#212529",
+            bg="#2C2C2C",
             fg="white",
             font=("Arial", 12, "bold")
         )
@@ -668,7 +674,7 @@ class CHIMLauncher(tk.Tk):
         nvidia_header = tk.Label(
             readme_frame,
             text="NVIDIA GPU users:",
-            bg="#212529",
+            bg="#2C2C2C",
             fg="white",
             font=("Arial", 10, "bold"),
             anchor="w"
@@ -681,7 +687,7 @@ class CHIMLauncher(tk.Tk):
         nvidia_label = tk.Label(
             readme_frame,
             text=nvidia_text,
-            bg="#212529",
+            bg="#2C2C2C",
             fg="white",
             wraplength=480,  # Adjust wrap length as needed
             justify="left",
@@ -694,7 +700,7 @@ class CHIMLauncher(tk.Tk):
         amd_header = tk.Label(
             readme_frame,
             text="AMD GPU users:",
-            bg="#212529",
+            bg="#2C2C2C",
             fg="white",
             font=("Arial", 10, "bold"),
             anchor="w"
@@ -708,7 +714,7 @@ class CHIMLauncher(tk.Tk):
         amd_label = tk.Label(
             readme_frame,
             text=amd_text,
-            bg="#212529",
+            bg="#2C2C2C",
             fg="white",
             wraplength=480,  # Adjust wrap length as needed
             justify="left",
@@ -721,7 +727,7 @@ class CHIMLauncher(tk.Tk):
         gpu_header = tk.Label(
             readme_frame,
             text="GPU Usage",
-            bg="#212529",
+            bg="#2C2C2C",
             fg="white",
             font=("Arial", 12, "bold"),
             anchor="w"
@@ -756,17 +762,21 @@ class CHIMLauncher(tk.Tk):
         style = ttk.Style()
         style.theme_use("default")
         style.configure("Treeview",
-                        background="#212529",
+                        background="#2C2C2C",
                         foreground="white",
-                        fieldbackground="#212529",
+                        fieldbackground="#2C2C2C",
                         font=("Arial", 10))
         style.configure("Treeview.Heading",
-                        background="#031633",
+                        background="#5E0505",  # Deep red
                         foreground="white",
                         font=("Arial", 10, "bold"))
+        # Remove hover effect by setting active color same as normal
+        style.map("Treeview",
+                background=[('selected', '#2C2C2C')],
+                foreground=[('selected', 'white')])
         style.map("Treeview.Heading",
-                        background=[('active', "#031633")],
-                        foreground=[('active', "white")])
+                background=[('active', "#5E0505")],  # Same as normal state
+                foreground=[('active', "white")])
         
         gpu_tree.pack(pady=(0, 10), padx=0, fill="x")
 
@@ -799,8 +809,8 @@ class CHIMLauncher(tk.Tk):
         # Create a new Toplevel window
         debug_window = tk.Toplevel(self)
         debug_window.title("Debugging")
-        debug_window.geometry("440x360")  # Made window taller to accommodate new button
-        debug_window.configure(bg="#212529")
+        debug_window.geometry("440x380")  # Made window taller to accommodate new button
+        debug_window.configure(bg="#2C2C2C")
         debug_window.resizable(False, False)
 
         # Set the window icon to CHIM.png (optional)
@@ -814,20 +824,20 @@ class CHIMLauncher(tk.Tk):
 
         # Style options for buttons
         debug_button_style = {
-            'bg': "#031633",  # Button color
+            'bg': "#5E0505",  # Deep red
             'fg': "white",
-            'activebackground': "#021b4d",  # Active button color
+            'activebackground': "#4A0404",  # Hover color
             'activeforeground': "white",
             'font': ("Arial", 12, "bold"),
-            'bd': 1,
-            'relief': tk.GROOVE,
+            'relief': 'groove',
+            'borderwidth': 2,
             'highlightthickness': 0,
-            'width': 29,  # Increased width from 25 to 29
-            'cursor': 'hand2'  # Change cursor on hover
+            'width': 29,
+            'cursor': 'hand2'
         }
 
         # Create a frame for the buttons
-        debug_button_frame = tk.Frame(debug_window, bg="#212529")
+        debug_button_frame = tk.Frame(debug_window, bg="#2C2C2C")
         debug_button_frame.pack(pady=20)
 
         # Get current branch for the button text
