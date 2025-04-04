@@ -29,7 +29,7 @@ class CHIMLauncher(tk.Tk):
         self.configure(bg="#2C2C2C")
         self.resizable(False, False)  
 
-        self.bold_font = font.Font(family="Arial", size=12, weight="bold")
+        self.bold_font = font.Font(family="Futura CondensedLight", size=12, weight="bold")
         
         # Initialize server running state
         self.server_running = False
@@ -91,7 +91,7 @@ class CHIMLauncher(tk.Tk):
                 text="CHIM",
                 fg="white",
                 bg="#2C2C2C",
-                font=("Arial", 24)
+                font=("Futura CondensedLight", 24)
             )
             title_label.pack(pady=10)
 
@@ -110,15 +110,15 @@ class CHIMLauncher(tk.Tk):
             'cursor': 'hand2',
             'relief': 'groove',
             'borderwidth': 2,
-            'highlightthickness': 0
+            'highlightthickness': 0,
+            'font': ("Futura CondensedLight", 12, "bold")
         }
 
-        # Arrange buttons vertically using pack
+        # Create buttons vertically using pack
         self.start_button = tk.Button(
             button_frame,
             text=self.original_start_text,
             command=self.start_wsl,
-            font=self.bold_font,
             **button_style
         )
         self.start_button.pack(fill=tk.X, pady=5)
@@ -129,7 +129,6 @@ class CHIMLauncher(tk.Tk):
             text="Stop Server",
             command=self.stop_wsl,
             state=tk.DISABLED,
-            font=self.bold_font,
             **button_style
         )
         self.stop_button.pack(fill=tk.X, pady=5)
@@ -139,7 +138,6 @@ class CHIMLauncher(tk.Tk):
             button_frame,
             text="Force Stop Server",
             command=self.force_stop_wsl,
-            font=self.bold_font,
             **button_style
         )
         self.force_stop_button.pack(fill=tk.X, pady=5)
@@ -149,7 +147,6 @@ class CHIMLauncher(tk.Tk):
             button_frame,
             text="Update Server",
             command=self.update_wsl,
-            font=self.bold_font,
             **button_style
         )
         self.update_button.pack(fill=tk.X, pady=5)
@@ -159,7 +156,6 @@ class CHIMLauncher(tk.Tk):
             button_frame,
             text="Open Server Folder",
             command=self.open_chim_server_folder,
-            font=self.bold_font,
             **button_style
         )
         self.open_folder_button.pack(fill=tk.X, pady=5)
@@ -170,7 +166,6 @@ class CHIMLauncher(tk.Tk):
             button_frame,
             text="Install Components",
             command=self.open_install_components_menu,
-            font=self.bold_font, 
             **button_style
         )
         self.install_components_button.pack(fill=tk.X, pady=5)
@@ -180,7 +175,6 @@ class CHIMLauncher(tk.Tk):
             button_frame,
             text="Configure Installed Components",
             command=self.configure_installed_components,
-            font=self.bold_font,
             **button_style
         )
         self.configure_button.pack(fill=tk.X, pady=5)
@@ -190,7 +184,6 @@ class CHIMLauncher(tk.Tk):
             button_frame,
             text="Debugging",
             command=self.open_debugging_menu,
-            font=self.bold_font,
             **button_style
         )
         self.debugging_button.pack(fill=tk.X, pady=5)
@@ -202,7 +195,7 @@ class CHIMLauncher(tk.Tk):
             text="Checking for Updates",
             fg="white",
             bg="#2C2C2C",
-            font=("Arial", 10)
+            font=("Futura CondensedLight", 10)
         )
         self.update_status_label.pack(pady=5)
 
@@ -212,7 +205,7 @@ class CHIMLauncher(tk.Tk):
             text="View on GitHub",
             fg="white",
             bg="#2C2C2C",
-            font=("Arial", 10),
+            font=("Futura CondensedLight", 10),
             cursor="hand2"
         )
         repo_link.pack(pady=5)
@@ -223,7 +216,7 @@ class CHIMLauncher(tk.Tk):
             text="Read the Manual",
             fg="white",
             bg="#2C2C2C",
-            font=("Arial", 10),
+            font=("Futura CondensedLight", 10),
             cursor="hand2"
         )
         manual_link.pack(pady=5)
@@ -243,7 +236,7 @@ class CHIMLauncher(tk.Tk):
             self.loading_frame,
             fg="white",
             bg="#2C2C2C",
-            font=("Arial", 12)
+            font=("Futura CondensedLight", 12)
         )
         self.loading_label.pack(side=tk.LEFT, padx=5)
 
@@ -252,7 +245,7 @@ class CHIMLauncher(tk.Tk):
             self.main_frame,
             bg="#1e1e1e",
             fg="white",
-            font=("Consolas", 10),
+            font=("Futura CondensedLight", 10),
             wrap=tk.WORD
         )
         self.output_area.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0,10))
@@ -593,7 +586,7 @@ class CHIMLauncher(tk.Tk):
             'fg': "white",
             'activebackground': "#4A0404",  # Hover color
             'activeforeground': "white",
-            'font': ("Arial", 12, "bold"),
+            'font': ("Futura CondensedLight", 12, "bold"),
             'relief': 'groove',
             'borderwidth': 2,
             'highlightthickness': 0,
@@ -666,7 +659,7 @@ class CHIMLauncher(tk.Tk):
             text="READ THIS!",
             bg="#2C2C2C",
             fg="white",
-            font=("Arial", 12, "bold")
+            font=("Futura CondensedLight", 12, "bold")
         )
         readme_frame.pack(fill="both", expand=True, padx=10, pady=10)
 
@@ -676,7 +669,7 @@ class CHIMLauncher(tk.Tk):
             text="NVIDIA GPU users:",
             bg="#2C2C2C",
             fg="white",
-            font=("Arial", 10, "bold"),
+            font=("Futura CondensedLight", 10, "bold"),
             anchor="w"
         )
         nvidia_header.pack(pady=(10, 0), padx=0, fill="x")
@@ -691,7 +684,7 @@ class CHIMLauncher(tk.Tk):
             fg="white",
             wraplength=480,  # Adjust wrap length as needed
             justify="left",
-            font=("Arial", 10),
+            font=("Futura CondensedLight", 10),
             anchor="w"
         )
         nvidia_label.pack(pady=(0, 10), padx=0, fill="x")
@@ -702,7 +695,7 @@ class CHIMLauncher(tk.Tk):
             text="AMD GPU users:",
             bg="#2C2C2C",
             fg="white",
-            font=("Arial", 10, "bold"),
+            font=("Futura CondensedLight", 10, "bold"),
             anchor="w"
         )
         amd_header.pack(pady=(10, 0), padx=0, fill="x")
@@ -718,7 +711,7 @@ class CHIMLauncher(tk.Tk):
             fg="white",
             wraplength=480,  # Adjust wrap length as needed
             justify="left",
-            font=("Arial", 10),
+            font=("Futura CondensedLight", 10),
             anchor="w"
         )
         amd_label.pack(pady=(0, 10), padx=0, fill="x")
@@ -729,7 +722,7 @@ class CHIMLauncher(tk.Tk):
             text="GPU Usage",
             bg="#2C2C2C",
             fg="white",
-            font=("Arial", 12, "bold"),
+            font=("Futura CondensedLight", 12, "bold"),
             anchor="w"
         )
         gpu_header.pack(pady=(10, 5), padx=0, fill="x")
@@ -765,11 +758,11 @@ class CHIMLauncher(tk.Tk):
                         background="#2C2C2C",
                         foreground="white",
                         fieldbackground="#2C2C2C",
-                        font=("Arial", 10))
+                        font=("Futura CondensedLight", 10))
         style.configure("Treeview.Heading",
                         background="#5E0505",  # Deep red
                         foreground="white",
-                        font=("Arial", 10, "bold"))
+                        font=("Futura CondensedLight", 10, "bold"))
         # Remove hover effect by setting active color same as normal
         style.map("Treeview",
                 background=[('selected', '#2C2C2C')],
@@ -828,7 +821,7 @@ class CHIMLauncher(tk.Tk):
             'fg': "white",
             'activebackground': "#4A0404",  # Hover color
             'activeforeground': "white",
-            'font': ("Arial", 12, "bold"),
+            'font': ("Futura CondensedLight", 12, "bold"),
             'relief': 'groove',
             'borderwidth': 2,
             'highlightthickness': 0,
