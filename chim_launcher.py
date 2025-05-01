@@ -10,6 +10,153 @@ import datetime
 import sys
 import os
 from PIL import Image, ImageTk
+import http.server
+import socketserver
+import urllib.parse
+import io # Added for reading request body
+
+# --- HTTP Proxy Classes ---
+class ProxyHandler(http.server.BaseHTTPRequestHandler):
+    def _forward_request(self):
+        launcher = self.server.launcher
+        # Make sure to update UI from the main thread - REMOVED update_ui_callback lambda
+        # update_ui_callback = lambda status, latency_ms=None: launcher.after(0, launcher.update_proxy_status_ui, status, latency_ms)
+        
+        target_ip = launcher.get_wsl_ip()
+
+        if not target_ip:
+            # Log failure only if connection was previously reported as ok AND server was ready
+            if launcher.wsl_connection_reported and launcher.wsl_server_ready:
+                 launcher.after(0, launcher.append_output, "WSL Connection to Skyrim Lost!\n", "red")
+            # launcher.wsl_connection_reported = False # REMOVE: Don't reset on error
+            self.send_error(503, "WSL Service Unavailable (Could not get IP)")
+            # launcher.append_output("Proxy Error: Could not get WSL IP to forward request.\n") # Hidden log
+            # update_ui_callback("error", None) # Removed UI update
+            return
+
+        target_port = 8081 # Port inside WSL
+        target_url = f"http://{target_ip}:{target_port}{self.path}"
+        # launcher.append_output(f"Proxy forwarding {self.command} request to: {target_url}\n") # Hidden log
+
+        req_headers = {k: v for k, v in self.headers.items()}
+        req_body = None
+        content_length = self.headers.get('Content-Length')
+        if content_length:
+            try:
+                body_bytes = self.rfile.read(int(content_length))
+                req_body = body_bytes
+            except Exception as e:
+                # Log failure only if connection was previously reported as ok AND server was ready
+                if launcher.wsl_connection_reported and launcher.wsl_server_ready:
+                     launcher.after(0, launcher.append_output, f"WSL Connection to Skyrim Lost!\n", "red")
+                # launcher.wsl_connection_reported = False # REMOVE: Don't reset on error
+                self.send_error(400, f"Error reading request body: {e}")
+                # launcher.append_output(f"Proxy Error: Failed reading request body: {e}\n") # Hidden log
+                # update_ui_callback("error", None) # Removed UI update
+                return
+        
+        try:
+            response = requests.request(
+                method=self.command,
+                url=target_url,
+                headers=req_headers,
+                data=req_body, 
+                timeout=10,
+                stream=True
+            )
+
+            self.send_response(response.status_code)
+            excluded_headers = ['content-encoding', 'transfer-encoding', 'connection']
+            for key, value in response.headers.items():
+                 if key.lower() not in excluded_headers:
+                    self.send_header(key, value)
+            self.end_headers()
+
+            try:
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        self.wfile.write(chunk)
+            except Exception as e:
+                 # launcher.append_output(f"Proxy Error: Failed writing response body: {e}\n") # Hidden log
+                 # Don't mark as connection lost here, client might have disconnected
+                 pass
+
+            # Calculate latency (though we aren't displaying it anymore, response.elapsed is still useful)
+            latency_ms = response.elapsed.total_seconds() * 1000
+            
+            # Log established connection only once AND only after server is ready
+            if not launcher.wsl_connection_reported and launcher.wsl_server_ready:
+                launcher.after(0, launcher.append_output, "WSL Connection to Skyrim Established!\n", "green")
+                launcher.wsl_connection_reported = True
+                
+            # launcher.append_output(f"Proxy forwarded request successfully ({response.status_code}).\n") # Hidden log
+            # update_ui_callback("ok", latency_ms) # Removed UI update
+            response.close()
+
+        except requests.exceptions.ConnectionError:
+            # Log failure only if connection was previously reported as ok AND server was ready
+            if launcher.wsl_connection_reported and launcher.wsl_server_ready:
+                 launcher.after(0, launcher.append_output, "WSL Connection to Skyrim Lost!\n", "red")
+            # launcher.wsl_connection_reported = False # REMOVE: Don't reset on error
+            # error_msg = ... (Hidden log)
+            self.send_error(503, "WSL Service Unavailable (Connection Error)")
+            # launcher.append_output(error_msg) # Hidden log
+            # launcher.wsl_ip = None # REMOVE: Don't clear IP on connection error, only on discovery failure
+            # update_ui_callback("error", None) # Removed UI update
+        except requests.exceptions.Timeout:
+            # Log failure only if connection was previously reported as ok AND server was ready
+            if launcher.wsl_connection_reported and launcher.wsl_server_ready:
+                 launcher.after(0, launcher.append_output, "WSL Connection to Skyrim Lost!\n", "red")
+            # launcher.wsl_connection_reported = False # REMOVE: Don't reset on error
+            # error_msg = ... (Hidden log)
+            self.send_error(504, "Gateway Timeout")
+            # launcher.append_output(error_msg) # Hidden log
+            # update_ui_callback("error", None) # Removed UI update
+        except requests.exceptions.RequestException as e:
+            # Log failure only if connection was previously reported as ok AND server was ready
+            if launcher.wsl_connection_reported and launcher.wsl_server_ready:
+                 launcher.after(0, launcher.append_output, f"WSL Connection to Skyrim Lost!\n", "red")
+            # launcher.wsl_connection_reported = False # REMOVE: Don't reset on error
+            # error_msg = ... (Hidden log)
+            self.send_error(500, f"Internal Proxy Error: {e}")
+            # launcher.append_output(error_msg) # Hidden log
+            # update_ui_callback("error", None) # Removed UI update
+        except Exception as e:
+            # Log failure only if connection was previously reported as ok AND server was ready
+            if launcher.wsl_connection_reported and launcher.wsl_server_ready:
+                 launcher.after(0, launcher.append_output, f"WSL Connection to Skyrim Lost!\n", "red")
+            # launcher.wsl_connection_reported = False # REMOVE: Don't reset on error
+            # error_msg = ... (Hidden log)
+            try:
+                self.send_error(500, "Internal Server Error")
+            except Exception:
+                pass 
+            finally:
+                # update_ui_callback("error", None) # Removed UI update
+                pass # Ensure finally block isn't empty
+
+    def do_GET(self):
+        self._forward_request()
+    def do_POST(self):
+        self._forward_request()
+    def do_PUT(self):
+        self._forward_request()
+    def do_DELETE(self):
+        self._forward_request()
+    def do_HEAD(self):
+        self._forward_request()
+    def do_OPTIONS(self):
+        self._forward_request()
+
+    def log_message(self, format, *args):
+        return # Suppress default logging
+
+class ProxiedTCPServer(socketserver.ThreadingTCPServer):
+    allow_reuse_address = True
+    def __init__(self, server_address, RequestHandlerClass, launcher_instance):
+        super().__init__(server_address, RequestHandlerClass)
+        self.launcher = launcher_instance
+# --- End HTTP Proxy Classes ---
 
 def get_resource_path(filename):
     """Get the absolute path to a resource, works for PyInstaller."""
@@ -25,9 +172,10 @@ class CHIMLauncher(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("CHIM")
-        self.geometry("400x800")  
+        # Make window wider and taller, disable resizing
+        self.geometry("900x800")  # Increased height
         self.configure(bg="#2C2C2C")
-        self.resizable(False, False)  
+        self.resizable(False, False) # Disable resizing
 
         self.bold_font = font.Font(family="Futura CondensedLight", size=12, weight="bold")
         
@@ -44,6 +192,17 @@ class CHIMLauncher(tk.Tk):
         self.update_status_animation_running = False
         self.update_status_animation_dots = 0
 
+        # Proxy variables
+        self.wsl_ip = None
+        self.proxy_server = None
+        self.proxy_thread = None
+        self.proxy_port = 7513 # Port the launcher will listen on
+        # self.proxy_status = "neutral" # Removed proxy status tracking
+
+        # Add flag for connection status logging
+        self.wsl_connection_reported = False 
+        self.wsl_server_ready = False # Flag to track if WSL server reported ready
+
         self.create_widgets()
 
         # Set the window icon
@@ -54,7 +213,107 @@ class CHIMLauncher(tk.Tk):
         
         # Start the update check in a separate thread
         threading.Thread(target=self.check_for_updates, daemon=True).start()
+
+        # Start the proxy server
+        self.start_proxy_server()
         
+    def start_proxy_server(self):
+        """Starts the HTTP proxy server in a separate thread."""
+        try:
+            # Note: Handler class needs to be defined before this is called - DEFINED ABOVE NOW
+            # We will use a placeholder for now and inject the real classes later - NO LONGER PLACEHOLDERS
+            # This is a limitation of applying edits sequentially - REMOVED PLACEHOLDERS
+            # class PlaceholderHandler(http.server.BaseHTTPRequestHandler): 
+            #      def handle(self): pass # Do nothing for placeholder
+            
+            # Need to define ProxiedTCPServer before use too - DEFINED ABOVE NOW
+            # class PlaceholderTCPServer(socketserver.ThreadingTCPServer):
+            #      allow_reuse_address = True
+            #      def __init__(self, server_address, RequestHandlerClass, launcher_instance):
+            #          super().__init__(server_address, RequestHandlerClass)
+            #          self.launcher = launcher_instance
+
+            # Use the actual classes now defined above
+            self.proxy_server = ProxiedTCPServer(("127.0.0.1", self.proxy_port), ProxyHandler, self)
+            self.proxy_thread = threading.Thread(target=self.proxy_server.serve_forever, daemon=True)
+            self.proxy_thread.start()
+            self.append_output(f"HTTP Proxy server started on 127.0.0.1:{self.proxy_port}\n")
+            
+            # Attempt to get WSL IP immediately after starting proxy
+            threading.Thread(target=self.get_wsl_ip, daemon=True).start()
+            
+        except OSError as e:
+            if e.errno == 98 or e.errno == 10048: # Address already in use
+                 error_msg = f"Proxy Error: Port {self.proxy_port} is already in use. Is another instance running?\n"
+                 messagebox.showerror("Proxy Error", f"Port {self.proxy_port} is already in use. Cannot start proxy.\nEnsure no other CHIM Launcher or application is using this port.")
+                 self.append_output(error_msg)
+            else:
+                error_msg = f"Proxy Error: Could not start proxy server: {e}\n"
+                messagebox.showerror("Proxy Error", f"Could not start proxy server: {e}")
+                self.append_output(error_msg)
+            self.proxy_server = None
+            self.proxy_thread = None
+        except Exception as e:
+            error_msg = f"Proxy Error: An unexpected error occurred starting proxy server: {e}\n"
+            messagebox.showerror("Proxy Error", f"An unexpected error occurred starting proxy: {e}")
+            self.append_output(error_msg)
+            self.proxy_server = None
+            self.proxy_thread = None
+            
+    def get_wsl_ip(self, force_refresh=False):
+        """Get the IP address of the WSL instance. Caches the result. Only logs if IP changes."""
+        current_ip = self.wsl_ip # Store current cached IP
+        
+        if current_ip and not force_refresh:
+            return current_ip
+
+        new_ip = None # Initialize new_ip
+        try:
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = 0  # SW_HIDE
+            
+            cmd = ["wsl", "-d", "DwemerAI4Skyrim3", "hostname", "-I"]
+            result = subprocess.run(
+                cmd, 
+                capture_output=True, 
+                text=True, 
+                check=True, 
+                startupinfo=startupinfo,
+                creationflags=subprocess.CREATE_NO_WINDOW
+            )
+            ip_address = result.stdout.strip().split()[0]
+            if ip_address:
+                new_ip = ip_address # Store the successfully found IP
+            else:
+                self.append_output("Failed to parse WSL IP address from output.\n")
+                # Keep self.wsl_ip as is (or None if it was None)
+                return current_ip # Return previous IP if parsing failed
+
+        except FileNotFoundError:
+            self.append_output("Error: 'wsl' command not found. Is WSL installed and in PATH?\n")
+            self.wsl_ip = None # Can't get IP, clear it
+            return None
+        except subprocess.CalledProcessError as e:
+            # Log only if the IP check *itself* fails, not on every request fail
+            self.append_output(f"Error checking WSL IP: {e}\n") 
+            self.wsl_ip = None # Assume IP is invalid if command fails
+            return None
+        except Exception as e:
+            self.append_output(f"An unexpected error occurred while getting WSL IP: {e}\n")
+            self.wsl_ip = None
+            return None
+            
+        # Only log and update cache if the new IP is valid and different from the current one
+        if new_ip and new_ip != current_ip:
+             self.append_output(f"DwemerDistro WSL IP: {new_ip}\n")
+             self.wsl_ip = new_ip
+        elif new_ip and not current_ip: # First time finding a valid IP
+             self.append_output(f"DwemerDistro WSL IP: {new_ip}\n")
+             self.wsl_ip = new_ip
+             
+        return self.wsl_ip # Return the newly found/cached IP
+
     def set_window_icon(self, icon_filename):
         """Sets the window icon for the application."""
         icon_path = get_resource_path(icon_filename)
@@ -67,10 +326,38 @@ class CHIMLauncher(tk.Tk):
             print(f"Error setting icon: {e}")
 
     def create_widgets(self):
-        # Create a frame for the top widgets
-        top_frame = tk.Frame(self, bg="#2C2C2C")
-        top_frame.pack(side=tk.TOP, fill=tk.X, pady=10)
+        # Configure main window grid (2 columns)
+        self.grid_rowconfigure(0, weight=1) # Make row 0 expandable
+        self.grid_columnconfigure(0, weight=1) # Column 0: Left controls
+        self.grid_columnconfigure(1, weight=1) # Column 1: Log area 
+        # self.grid_columnconfigure(2, weight=1) # REMOVED Column 2
 
+        # --- Left Frame for Controls (Column 0) --- 
+        left_frame = tk.Frame(self, bg="#2C2C2C", width=350)
+        left_frame.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
+        left_frame.grid_propagate(False)
+        
+        # --- Middle Frame for Link Buttons (REMOVED) --- 
+        # middle_frame = tk.Frame(self, bg="#2C2C2C")
+        # middle_frame.grid(row=0, column=1, sticky="nsew", padx=5, pady=10)
+        
+        # --- Output Area (Column 1) --- 
+        self.output_area = scrolledtext.ScrolledText(
+            self, # Place back in main window
+            bg="#1e1e1e",
+            fg="white",
+            font=("Futura CondensedLight", 10),
+            wrap=tk.WORD,
+            width=40 # Keep initial width constraint for now
+        )
+        # Place output area in the second column (index 1)
+        self.output_area.grid(row=0, column=1, sticky="nsew", padx=(0, 10), pady=10) 
+        self.output_area.config(state=tk.DISABLED)
+        # Configure color tags
+        self.output_area.tag_config('green', foreground='lime green')
+        self.output_area.tag_config('red', foreground='red')
+
+        # --- Content for Left Frame --- 
         # Load the image
         image_path = get_resource_path('CHIM_title.png')
         try:
@@ -81,13 +368,12 @@ class CHIMLauncher(tk.Tk):
             photo = None
 
         if photo:
-            image_label = tk.Label(top_frame, image=photo, bg="#2C2C2C")
-            image_label.photo = photo  # Keep a reference to prevent garbage collection
+            image_label = tk.Label(left_frame, image=photo, bg="#2C2C2C")
+            image_label.photo = photo
             image_label.pack(pady=10)
         else:
-            # If image could not be loaded, use a placeholder label
             title_label = tk.Label(
-                top_frame,
+                left_frame,
                 text="CHIM",
                 fg="white",
                 bg="#2C2C2C",
@@ -95,15 +381,18 @@ class CHIMLauncher(tk.Tk):
             )
             title_label.pack(pady=10)
 
-        # Create a frame for buttons within top_frame
-        button_frame = tk.Frame(top_frame, bg="#2C2C2C")
-        button_frame.pack(pady=10)
-
-        # Style options for buttons
+        # --- LabelFrame Styles --- 
+        labelframe_style = {
+            'bg': "#2C2C2C", 
+            'fg': "white", 
+            'font': ("Futura CondensedLight", 11, "bold"),
+            'padx': 5,
+            'pady': 5
+        }
         button_style = {
             'bg': '#5E0505',         # Deep red
             'fg': 'white',          
-            'activebackground': '#4A0404',  # Darker shade for hover
+            'activebackground': '#4A0404',
             'activeforeground': 'white',
             'padx': 10,              
             'pady': 5,               
@@ -114,148 +403,172 @@ class CHIMLauncher(tk.Tk):
             'font': ("Futura CondensedLight", 12, "bold")
         }
 
-        # Create buttons vertically using pack
+        # Define standard button colors for hover effect
+        standard_button_bg = '#5E0505'
+        standard_button_hover_bg = '#4A0404'
+
+        # --- Server Controls Group --- 
+        server_controls_frame = tk.LabelFrame(left_frame, text="Server Controls", **labelframe_style)
+        server_controls_frame.pack(pady=10, padx=5, fill=tk.X)
+        
         self.start_button = tk.Button(
-            button_frame,
+            server_controls_frame, # Put in correct frame
             text=self.original_start_text,
             command=self.start_wsl,
             **button_style
         )
         self.start_button.pack(fill=tk.X, pady=5)
-        self.add_hover_effects(self.start_button)
+        self.add_hover_effects(self.start_button, standard_button_bg, standard_button_hover_bg)
 
         self.stop_button = tk.Button(
-            button_frame,
+            server_controls_frame, # Put in correct frame
             text="Stop Server",
             command=self.stop_wsl,
             state=tk.DISABLED,
             **button_style
         )
         self.stop_button.pack(fill=tk.X, pady=5)
-        self.add_hover_effects(self.stop_button)
+        self.add_hover_effects(self.stop_button, standard_button_bg, standard_button_hover_bg)
 
         self.force_stop_button = tk.Button(
-            button_frame,
+            server_controls_frame, # Put in correct frame
             text="Force Stop Server",
             command=self.force_stop_wsl,
             **button_style
         )
         self.force_stop_button.pack(fill=tk.X, pady=5)
-        self.add_hover_effects(self.force_stop_button)
+        self.add_hover_effects(self.force_stop_button, standard_button_bg, standard_button_hover_bg)
 
         self.update_button = tk.Button(
-            button_frame,
+            server_controls_frame, # Put in correct frame
             text="Update Server",
             command=self.update_wsl,
             **button_style
         )
         self.update_button.pack(fill=tk.X, pady=5)
-        self.add_hover_effects(self.update_button)
+        self.add_hover_effects(self.update_button, standard_button_bg, standard_button_hover_bg)
 
+        # Create and pack the update status label here
+        self.update_status_label = tk.Label(
+            server_controls_frame, # Put back in server controls frame
+            text="Checking for Updates...", # Initial text
+            fg="white",
+            bg="#2C2C2C",
+            font=("Futura CondensedLight", 10)
+        )
+        # Pack the label AFTER update_button
+        self.update_status_label.pack(pady=5, fill=tk.X) 
+
+        # --- Server Configuration Group --- 
+        server_config_frame = tk.LabelFrame(left_frame, text="Server Configuration", **labelframe_style)
+        server_config_frame.pack(pady=10, padx=5, fill=tk.X)
+        
         self.open_folder_button = tk.Button(
-            button_frame,
+            server_config_frame, # Put in correct frame
             text="Open Server Folder",
             command=self.open_chim_server_folder,
             **button_style
         )
         self.open_folder_button.pack(fill=tk.X, pady=5)
-        self.add_hover_effects(self.open_folder_button)
+        self.add_hover_effects(self.open_folder_button, standard_button_bg, standard_button_hover_bg)
 
-        # Add the "Install Components" button
         self.install_components_button = tk.Button(
-            button_frame,
+            server_config_frame, # Put in correct frame
             text="Install Components",
             command=self.open_install_components_menu,
             **button_style
         )
         self.install_components_button.pack(fill=tk.X, pady=5)
-        self.add_hover_effects(self.install_components_button)
+        self.add_hover_effects(self.install_components_button, standard_button_bg, standard_button_hover_bg)
 
         self.configure_button = tk.Button(
-            button_frame,
+            server_config_frame, # Put in correct frame
             text="Configure Installed Components",
             command=self.configure_installed_components,
             **button_style
         )
         self.configure_button.pack(fill=tk.X, pady=5)
-        self.add_hover_effects(self.configure_button)
+        self.add_hover_effects(self.configure_button, standard_button_bg, standard_button_hover_bg)
         
         self.debugging_button = tk.Button(
-            button_frame,
+            server_config_frame, # Put in correct frame
             text="Debugging",
             command=self.open_debugging_menu,
             **button_style
         )
         self.debugging_button.pack(fill=tk.X, pady=5)
-        self.add_hover_effects(self.debugging_button)
+        self.add_hover_effects(self.debugging_button, standard_button_bg, standard_button_hover_bg)
 
-        # Display update status
-        self.update_status_label = tk.Label(
-            top_frame,
-            text="Checking for Updates",
-            fg="white",
-            bg="#2C2C2C",
-            font=("Futura CondensedLight", 10)
-        )
-        self.update_status_label.pack(pady=5)
+        # --- External Links Group --- 
+        external_links_frame = tk.LabelFrame(left_frame, text="External Links", **labelframe_style)
+        external_links_frame.pack(pady=10, padx=5, fill=tk.X)
 
-        # Add a link to the repository (Optional)
-        repo_link = tk.Label(
-            top_frame,
-            text="View on GitHub",
-            fg="white",
-            bg="#2C2C2C",
-            font=("Futura CondensedLight", 10),
-            cursor="hand2"
+        # Create an inner frame to hold the buttons for centering
+        inner_link_frame = tk.Frame(external_links_frame, bg="#2C2C2C")
+        # Pack the inner frame in the center
+        inner_link_frame.pack(anchor=tk.CENTER)
+
+        # Add Link Buttons to Inner Frame 
+        # Define base link button style (common settings)
+        base_link_button_style = {
+            'width': 10,
+            'font': ("Futura CondensedLight", 10, "bold"),
+            'fg': 'white', 
+            'activeforeground': 'white',
+            'relief': 'groove',
+            'borderwidth': 2,
+            'highlightthickness': 0,
+            'cursor': 'hand2'
+        }
+
+        # GitHub Button
+        github_bg = "#20661B" # Dark Green
+        github_hover_bg = "#154411" # Darker Green
+        github_style = base_link_button_style.copy()
+        github_style.update({'bg': github_bg, 'activebackground': github_hover_bg})
+        github_button = tk.Button(
+            inner_link_frame, 
+            text="GitHub", # Icon removed
+            command=lambda: webbrowser.open_new("https://github.com/abeiro/HerikaServer/tree/aiagent"),
+            **github_style
         )
-        repo_link.pack(pady=5)
-        repo_link.bind("<Button-1>", lambda e: webbrowser.open_new("https://github.com/abeiro/HerikaServer/tree/aiagent"))
+        github_button.pack(side=tk.LEFT, pady=5, padx=5, anchor=tk.CENTER)
+        self.add_hover_effects(github_button, github_bg, github_hover_bg) # Pass colors to hover handler
+
+        # Wiki Button
+        wiki_bg = "#808080" # Grey
+        wiki_hover_bg = "#606060" # Darker Grey
+        wiki_style = base_link_button_style.copy()
+        wiki_style.update({'bg': wiki_bg, 'activebackground': wiki_hover_bg})
+        wiki_button = tk.Button(
+            inner_link_frame, 
+            text="Wiki", # Icon removed
+            command=lambda: webbrowser.open_new("https://dwemerdynamics.hostwiki.io/"),
+            **wiki_style
+        )
+        wiki_button.pack(side=tk.LEFT, pady=5, padx=5, anchor=tk.CENTER)
+        self.add_hover_effects(wiki_button, wiki_bg, wiki_hover_bg) # Pass colors
+
+        # Discord Button
+        discord_bg = "#5865F2" # Discord Blurple/Purple
+        discord_hover_bg = "#454FBF" # Darker Blurple
+        discord_style = base_link_button_style.copy()
+        discord_style.update({'bg': discord_bg, 'activebackground': discord_hover_bg})
+        discord_button = tk.Button(
+            inner_link_frame, 
+            text="Discord", # Icon removed
+            command=lambda: webbrowser.open_new("https://discord.com/invite/NDn9qud2ug"),
+            **discord_style
+        )
+        discord_button.pack(side=tk.LEFT, pady=5, padx=5, anchor=tk.CENTER)
+        self.add_hover_effects(discord_button, discord_bg, discord_hover_bg) # Pass colors
         
-        manual_link = tk.Label(
-            top_frame,
-            text="Read the Manual",
-            fg="white",
-            bg="#2C2C2C",
-            font=("Futura CondensedLight", 10),
-            cursor="hand2"
-        )
-        manual_link.pack(pady=5)
-        manual_link.bind("<Button-1>", lambda e: webbrowser.open_new("https://docs.google.com/document/d/12KBar_VTn0xuf2pYw9MYQd7CKktx4JNr_2hiv4kOx3Q/edit?tab=t.0"))
-
-
-        # Create the main frame to hold loading_frame and output_area
-        self.main_frame = tk.Frame(self, bg="#2C2C2C")
-        self.main_frame.pack(fill=tk.BOTH, expand=True)
-        self.main_frame.grid_rowconfigure(0, weight=3)  
-        self.main_frame.grid_rowconfigure(1, weight=7)  
-        self.main_frame.grid_columnconfigure(0, weight=1)
-
-        # Create the loading frame but do not pack it yet
-        self.loading_frame = tk.Frame(self.main_frame, bg="#2C2C2C")
-        self.loading_label = tk.Label(
-            self.loading_frame,
-            fg="white",
-            bg="#2C2C2C",
-            font=("Futura CondensedLight", 12)
-        )
-        self.loading_label.pack(side=tk.LEFT, padx=5)
-
-        # Add the scrolled text area
-        self.output_area = scrolledtext.ScrolledText(
-            self.main_frame,
-            bg="#1e1e1e",
-            fg="white",
-            font=("Futura CondensedLight", 10),
-            wrap=tk.WORD
-        )
-        self.output_area.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0,10))
-        self.output_area.config(state=tk.DISABLED)
-        
-    def add_hover_effects(self, button):
+    def add_hover_effects(self, button, normal_bg, hover_bg):
+        # Updated hover handler to use passed colors
         def on_enter(e):
-            button['background'] = '#4A0404'  # Hover color
+            button['background'] = hover_bg  # Use passed hover color
         def on_leave(e):
-            button['background'] = '#5E0505'  # Deep red
+            button['background'] = normal_bg  # Use passed normal color
         button.bind('<Enter>', on_enter)
         button.bind('<Leave>', on_leave)
 
@@ -296,6 +609,10 @@ class CHIMLauncher(tk.Tk):
             messagebox.showinfo("Server Status", "The server is already running or starting.")
             return
 
+        # Reset connection flags on start
+        self.wsl_connection_reported = False
+        self.wsl_server_ready = False
+        
         # Update flags and button states
         self.server_starting = True
         self.start_button.config(state=tk.DISABLED)
@@ -338,6 +655,9 @@ class CHIMLauncher(tk.Tk):
                     self.after(0, self.stop_animation)
                     self.after(0, self.set_server_running)
                     self.append_output("Server is ready.\n")
+                    self.wsl_server_ready = True # Set the flag here
+                    # Trigger WSL IP check now that server is ready
+                    self.after(100, lambda: threading.Thread(target=self.get_wsl_ip, args=(True,), daemon=True).start()) # Force refresh
                     # Continue reading output until the process ends
 
             self.process.wait()
@@ -377,9 +697,9 @@ class CHIMLauncher(tk.Tk):
                     self.process.wait(timeout=5)
                 except subprocess.TimeoutExpired:
                     self.process.kill()
-                    self.append_output("DwemerDistro has been stopped.\n")
+                    self.append_output("DwemerDistro process killed after timeout.\n") # Clarified message
             else:
-                self.append_output("DwemerDistro is not running.\n")
+                self.append_output("DwemerDistro process not running or already stopped.\n") # Clarified message
 
             # Terminate the WSL distribution (optional)
             startupinfo = subprocess.STARTUPINFO()
@@ -392,10 +712,14 @@ class CHIMLauncher(tk.Tk):
                 startupinfo=startupinfo,
                 creationflags=subprocess.CREATE_NO_WINDOW
             )
-            self.append_output("DwemerDistro has stopped.\n")
+            self.append_output("DwemerDistro terminated.\n") # Clarified message
+
+            # Reset connection flags after successful stop
+            self.wsl_connection_reported = False
+            self.wsl_server_ready = False
 
         except Exception as e:
-            self.append_output(f"An error occurred: {e}\n")
+            self.append_output(f"An error occurred during stop: {e}\n")
 
         # Re-enable the Start button and disable the Stop button
         self.after(0, self.set_server_not_running)
@@ -416,19 +740,23 @@ class CHIMLauncher(tk.Tk):
 
             subprocess.run(
                 ["wsl", "-t", "DwemerAI4Skyrim3"],
-                check=True,
+                check=True, # Note: This might throw if already stopped, consider remove check=True
                 startupinfo=startupinfo,
                 creationflags=subprocess.CREATE_NO_WINDOW
             )
-            self.append_output("DwemerDistro has been forcefully stopped.\n")
+            self.append_output("DwemerDistro force terminated command sent.\n")
 
-            # If the process is still running, kill it
+            # If the process object exists and is still running, kill it
             if hasattr(self, 'process') and self.process and self.process.poll() is None:
                 self.process.kill()
-                self.append_output("DwemerDistro has been forcefully stopped.\n")
+                self.append_output("DwemerDistro process force killed.\n")
+            
+            # Reset connection flags after successful force stop
+            self.wsl_connection_reported = False
+            self.wsl_server_ready = False
 
         except Exception as e:
-            self.append_output(f"An error occurred: {e}\n")
+            self.append_output(f"An error occurred during force stop: {e}\n")
 
         # Re-enable the Start button and disable the Stop button
         self.after(0, self.set_server_not_running)
@@ -442,15 +770,19 @@ class CHIMLauncher(tk.Tk):
         threading.Thread(target=self.update_wsl_thread, daemon=True).start()
 
     def update_wsl_thread(self):
+        # original_button_text = self.update_button.cget("text") # No longer needed
         try:
-            # Disable the Update button to prevent multiple clicks
+            # Disable the Update button 
             self.after(0, lambda: self.update_button.config(state=tk.DISABLED))
+            # self.after(0, lambda: self.update_button.config(state=tk.DISABLED, text="Update Server\n(Updating...)", fg="white")) # Removed text/color change
 
             # Confirm update with the user
             confirm = messagebox.askyesno("Update Server", "This will update the CHIM server. Are you sure?")
             if not confirm:
                 self.append_output("Update canceled.\n")
+                # Re-enable button if cancelled
                 self.after(0, lambda: self.update_button.config(state=tk.NORMAL))
+                # self.after(0, lambda: self.update_button.config(state=tk.NORMAL, text=original_button_text)) # Removed text restore
                 return
 
             # Run the update command
@@ -478,24 +810,32 @@ class CHIMLauncher(tk.Tk):
 
             self.append_output("Update completed.\n")
 
-        except Exception as e:
-            self.append_output(f"An error occurred during update: {e}\n")
-
         finally:
-            # Re-enable the Update button
+            # Re-enable the Update button 
             self.after(0, lambda: self.update_button.config(state=tk.NORMAL))
-            # Check for updates after the update process completes (with a small delay to ensure files are updated)
-            self.after(2000, lambda: threading.Thread(target=self.check_for_updates, daemon=True).start())
+            # Check for updates after the update process completes 
+            self.after(100, lambda: threading.Thread(target=self.check_for_updates, daemon=True).start()) # Short delay before check
 
     def on_close(self):
         # Confirm exit with the user
-        if messagebox.askokcancel("Quit", "Do you really want to quit?"):
-            # Force stop the WSL distribution when the window is closed
-            self.force_stop_wsl()
-            # Destroy the window after force stopping
+        if messagebox.askokcancel("Quit", "Do you really want to quit? This will stop the server if running."):
+            # Stop the proxy server first
+            if self.proxy_server:
+                self.append_output("Shutting down proxy server...\n")
+                try:
+                    self.proxy_server.shutdown()
+                    self.proxy_server.server_close()
+                    self.append_output("Proxy server shut down.\n")
+                except Exception as e:
+                    self.append_output(f"Error shutting down proxy server: {e}\n")
+                    
+            # Force stop the WSL distribution
+            threading.Thread(target=self.force_stop_wsl_thread, daemon=True).start()
+            
+            # Destroy the window 
             self.destroy()
 
-    def append_output(self, text):
+    def append_output(self, text, tag=None):
         # Remove ANSI escape sequences from the text
         clean_text = self.remove_ansi_escape_sequences(text)
 
@@ -506,7 +846,10 @@ class CHIMLauncher(tk.Tk):
         # Append text to the output area in a thread-safe way
         def update_text():
             self.output_area.config(state=tk.NORMAL)
-            self.output_area.insert(tk.END, clean_text)
+            if tag:
+                self.output_area.insert(tk.END, clean_text, tag)
+            else:
+                self.output_area.insert(tk.END, clean_text)
             self.output_area.see(tk.END)
             self.output_area.config(state=tk.DISABLED)
 
@@ -533,7 +876,6 @@ class CHIMLauncher(tk.Tk):
             r'^[\s_¯]+$',          # Lines that contain only whitespace, underscores, or '¯' characters
             r'^_+$',               # Lines that contain only underscores
             r'^¯+$',               # Lines that contain only '¯' characters
-            r'^-+$',               # Lines that contain only hyphens
             r'^=+$',               # Lines that contain only equal signs
             r'^\s*$',              # Empty or whitespace-only lines
             r'^(__|¯¯){3,}$',      # Lines with repeated '__' or '¯¯' patterns
@@ -570,7 +912,6 @@ class CHIMLauncher(tk.Tk):
         submenu_window.geometry("500x630")  # Adjusted size to accommodate the table
         submenu_window.configure(bg="#2C2C2C")
         submenu_window.resizable(False, False)
-
         # Set the window icon to CHIM.png
         try:
             icon_path = get_resource_path('CHIM.png')  # Ensure CHIM.png exists
@@ -594,10 +935,14 @@ class CHIMLauncher(tk.Tk):
             'cursor': 'hand2'
         }
 
+        # Define standard button colors locally for hover effect
+        standard_button_bg = '#5E0505'
+        standard_button_hover_bg = '#4A0404'
+
         # Create a frame for the buttons
         button_frame = tk.Frame(submenu_window, bg="#2C2C2C")
         button_frame.pack(pady=10)
-
+        
         # Create buttons
         install_cuda_button = tk.Button(
             button_frame,
@@ -606,7 +951,7 @@ class CHIMLauncher(tk.Tk):
             **button_style
         )
         install_cuda_button.pack(pady=5)
-        self.add_hover_effects(install_cuda_button)
+        self.add_hover_effects(install_cuda_button, standard_button_bg, standard_button_hover_bg)
 
         install_xtts_button = tk.Button(
             button_frame,
@@ -615,7 +960,7 @@ class CHIMLauncher(tk.Tk):
             **button_style
         )
         install_xtts_button.pack(pady=5)
-        self.add_hover_effects(install_xtts_button)
+        self.add_hover_effects(install_xtts_button, standard_button_bg, standard_button_hover_bg)
 
         install_melotts_button = tk.Button(
             button_frame,
@@ -624,7 +969,7 @@ class CHIMLauncher(tk.Tk):
             **button_style
         )
         install_melotts_button.pack(pady=5)
-        self.add_hover_effects(install_melotts_button)
+        self.add_hover_effects(install_melotts_button, standard_button_bg, standard_button_hover_bg)
 
         install_minime_t5_button = tk.Button(
             button_frame,
@@ -633,7 +978,7 @@ class CHIMLauncher(tk.Tk):
             **button_style
         )
         install_minime_t5_button.pack(pady=5)
-        self.add_hover_effects(install_minime_t5_button)
+        self.add_hover_effects(install_minime_t5_button, standard_button_bg, standard_button_hover_bg)
 
         install_mimic3_button = tk.Button(
             button_frame,
@@ -642,7 +987,7 @@ class CHIMLauncher(tk.Tk):
             **button_style
         )
         install_mimic3_button.pack(pady=5)
-        self.add_hover_effects(install_mimic3_button)
+        self.add_hover_effects(install_mimic3_button, standard_button_bg, standard_button_hover_bg)
         
         install_localwhisper_button = tk.Button(
             button_frame,
@@ -651,7 +996,7 @@ class CHIMLauncher(tk.Tk):
             **button_style
         )
         install_localwhisper_button.pack(pady=5)
-        self.add_hover_effects(install_localwhisper_button)
+        self.add_hover_effects(install_localwhisper_button, standard_button_bg, standard_button_hover_bg)
 
         # README Section
         readme_frame = tk.LabelFrame(
@@ -833,6 +1178,10 @@ class CHIMLauncher(tk.Tk):
         debug_button_frame = tk.Frame(debug_window, bg="#2C2C2C")
         debug_button_frame.pack(pady=20)
 
+        # Define standard button colors locally for hover effect
+        standard_button_bg = '#5E0505'
+        standard_button_hover_bg = '#4A0404'
+
         # Get current branch for the button text
         current_branch = self.get_current_branch()
         branch_display = f"Switch Branch (Current: {current_branch})" if current_branch else "Switch Branch"
@@ -857,7 +1206,7 @@ class CHIMLauncher(tk.Tk):
                 **debug_button_style
             )
             btn.pack(pady=5)
-            self.add_hover_effects(btn)
+            self.add_hover_effects(btn, standard_button_bg, standard_button_hover_bg)
 
     def open_terminal(self):
         """Opens a new terminal window with the specified command."""
@@ -1117,79 +1466,57 @@ class CHIMLauncher(tk.Tk):
             print(f"Exception in get_current_branch: {e}")
             return None
 
-    def start_update_status_animation(self):
-        """Start the animation for the update status label."""
-        if not self.update_status_animation_running:
-            self.update_status_animation_running = True
-            self.update_status_animation_dots = 0
-            self.update_update_status_animation()
-
-    def update_update_status_animation(self):
-        """Update the update status label with animated dots."""
-        if self.update_status_animation_running:
-            dots = '.' * (self.update_status_animation_dots % 4)
-            self.update_status_label.config(text=f"Checking for Updates{dots}")
-            self.update_status_animation_dots += 1
-            self.after(500, self.update_update_status_animation)  # Update every 500ms
-
-    def stop_update_status_animation(self):
-        """Stop the animation for the update status label."""
-        self.update_status_animation_running = False
-
     def check_for_updates(self):
         """Check if a newer server version is available and update the status label."""
-        # Start the animation
-        self.after(0, self.start_update_status_animation)
+        # Use after(0, ...) to ensure UI updates happen on the main thread
+        update_label_config = lambda config: self.after(0, self.update_status_label.config, config)
+
+        # Initial state while checking
+        update_label_config({"text": "Checking for Updates...", "fg": "white"})
 
         # Start threads to get versions and branch concurrently
         current_version = [None]
         git_version = [None]
         current_branch = [None]
 
-        def get_current_version():
+        def get_current_version_thread():
             current_version[0] = self.get_current_server_version()
-
-        def get_git_version():
+        def get_git_version_thread():
             git_version[0] = self.get_git_version()
-
-        def get_branch():
+        def get_branch_thread():
             current_branch[0] = self.get_current_branch()
 
         threads = [
-            threading.Thread(target=get_current_version),
-            threading.Thread(target=get_git_version),
-            threading.Thread(target=get_branch)
+            threading.Thread(target=get_current_version_thread),
+            threading.Thread(target=get_git_version_thread),
+            threading.Thread(target=get_branch_thread)
         ]
         for t in threads:
             t.start()
         for t in threads:
-            t.join()
-
-        # Stop the animation
-        self.after(0, self.stop_update_status_animation)
+            t.join() # Wait for all threads to complete
 
         branch_text = f" ({current_branch[0]})" if current_branch[0] else ""
+        final_text = ""
+        text_color = "white" # Default color
 
         if current_version[0] and git_version[0]:
             comparison = self.compare_versions(current_version[0], git_version[0])
             if comparison < 0:
-                # Update status label to indicate update is available (Red Text)
-                self.after(0, lambda: self.update_status_label.config(
-                    text=f"CHIM Server Update Available{branch_text}",
-                    fg="red"
-                ))
+                # Update available
+                final_text = f"Update Available!{branch_text}"
+                text_color = "red"
             else:
-                # Update status label to indicate server is up to date (Green Text)
-                self.after(0, lambda: self.update_status_label.config(
-                    text=f"CHIM Server is up-to-date{branch_text}",
-                    fg="green"
-                ))
+                # Up-to-date
+                final_text = f"Up-to-date{branch_text}"
+                text_color = "lime green"
         else:
             # Could not retrieve version information
-            self.after(0, lambda: self.update_status_label.config(
-                text=f"Could not retrieve version information{branch_text}",
-                fg="yellow"
-            ))
+            final_text = f"Version Check Failed{branch_text}"
+            text_color = "yellow" # Use yellow for check failure
+            
+        # Update the label with final text and color
+        update_label_config({"text": final_text, "fg": text_color})
 
 if __name__ == "__main__":
     app = CHIMLauncher()
