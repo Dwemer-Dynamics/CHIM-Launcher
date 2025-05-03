@@ -14,6 +14,7 @@ import http.server
 import socketserver
 import urllib.parse
 import io # Added for reading request body
+import tkinter.filedialog # Added for save dialog
 
 # --- HTTP Proxy Classes ---
 class ProxyHandler(http.server.BaseHTTPRequestHandler):
@@ -237,7 +238,7 @@ class CHIMLauncher(tk.Tk):
             self.proxy_server = ProxiedTCPServer(("127.0.0.1", self.proxy_port), ProxyHandler, self)
             self.proxy_thread = threading.Thread(target=self.proxy_server.serve_forever, daemon=True)
             self.proxy_thread.start()
-            self.append_output(f"HTTP Proxy server started on 127.0.0.1:{self.proxy_port}\n")
+            self.append_output(f"CHIM Proxy listening on 127.0.0.1:{self.proxy_port}\n")
             
             # Attempt to get WSL IP immediately after starting proxy
             threading.Thread(target=self.get_wsl_ip, daemon=True).start()
@@ -1147,7 +1148,7 @@ class CHIMLauncher(tk.Tk):
         # Create a new Toplevel window
         debug_window = tk.Toplevel(self)
         debug_window.title("Debugging")
-        debug_window.geometry("440x380")  # Made window taller to accommodate new button
+        debug_window.geometry("440x550")  # Increased height
         debug_window.configure(bg="#2C2C2C")
         debug_window.resizable(False, False)
 
@@ -1182,23 +1183,31 @@ class CHIMLauncher(tk.Tk):
         standard_button_bg = '#5E0505'
         standard_button_hover_bg = '#4A0404'
 
+        # --- Generate Diagnostics Section (Moved to Top) ---
+        tk.Label(debug_button_frame, text="--- Diagnostics ---", bg="#2C2C2C", fg="white", font=("Futura CondensedLight", 10, "bold")).pack(pady=(0, 5))
+        generate_diagnostics_btn = tk.Button(
+            debug_button_frame,
+            text="Create Diagnostic File",
+            command=self.generate_diagnostics,
+            **debug_button_style
+        )
+        generate_diagnostics_btn.pack(pady=5)
+        self.add_hover_effects(generate_diagnostics_btn, standard_button_bg, standard_button_hover_bg)
+        ttk.Separator(debug_button_frame, orient='horizontal').pack(fill='x', pady=10) # Separator
+
         # Get current branch for the button text
         current_branch = self.get_current_branch()
         branch_display = f"Switch Branch (Current: {current_branch})" if current_branch else "Switch Branch"
 
-        # Define the debugging buttons with their respective commands
-        debugging_commands = [
+        # --- Actions Section ---
+        tk.Label(debug_button_frame, text="--- Distro Actions ---", bg="#2C2C2C", fg="white", font=("Futura CondensedLight", 10, "bold")).pack(pady=(0, 5))
+        action_commands = [
             ("Open Terminal", self.open_terminal),
             ("View Memory Usage", self.view_memory_usage),
-            ("View CHIM XTTS Logs", self.view_xtts_logs),
-            ("View MeloTTS Logs", self.view_melotts_logs),
-            ("View LocalWhisper Logs", self.view_localwhisper_logs),
-            ("View Apache Logs", self.view_apacheerror_logs),
-            ("Clean All Logs", self.clean_logs),  # Added new Clean Logs button
-            (branch_display, lambda: self.switch_branch(debug_window))  # Pass debug_window to switch_branch
+            (branch_display, lambda: self.switch_branch(debug_window)),
+            ("Clean All Logs", self.clean_logs),
         ]
-
-        for text, command in debugging_commands:
+        for text, command in action_commands:
             btn = tk.Button(
                 debug_button_frame,
                 text=text,
@@ -1207,6 +1216,26 @@ class CHIMLauncher(tk.Tk):
             )
             btn.pack(pady=5)
             self.add_hover_effects(btn, standard_button_bg, standard_button_hover_bg)
+        ttk.Separator(debug_button_frame, orient='horizontal').pack(fill='x', pady=10) # Separator
+
+        # --- View Logs Section ---
+        tk.Label(debug_button_frame, text="--- View Logs ---", bg="#2C2C2C", fg="white", font=("Futura CondensedLight", 10, "bold")).pack(pady=(0, 5))
+        log_view_commands = [
+            ("View CHIM XTTS Logs", self.view_xtts_logs),
+            ("View MeloTTS Logs", self.view_melotts_logs),
+            ("View LocalWhisper Logs", self.view_localwhisper_logs),
+            ("View Apache Logs", self.view_apacheerror_logs),
+        ]
+        for text, command in log_view_commands:
+            btn = tk.Button(
+                debug_button_frame,
+                text=text,
+                command=command,
+                **debug_button_style
+            )
+            btn.pack(pady=5)
+            self.add_hover_effects(btn, standard_button_bg, standard_button_hover_bg)
+
 
     def open_terminal(self):
         """Opens a new terminal window with the specified command."""
@@ -1517,6 +1546,119 @@ class CHIMLauncher(tk.Tk):
             
         # Update the label with final text and color
         update_label_config({"text": final_text, "fg": text_color})
+
+    def generate_diagnostics(self):
+        """Starts the diagnostics generation process in a new thread."""
+        threading.Thread(target=self.generate_diagnostics_thread, daemon=True).start()
+
+    def generate_diagnostics_thread(self):
+        """Gathers logs from specified files in WSL and saves them to a user-chosen file."""
+        self.append_output("Starting diagnostic log generation...")
+        
+        log_files = [
+            # SERVER logs
+            "/var/www/html/HerikaServer/log/output_from_llm.log",
+            "/var/www/html/HerikaServer/log/chim.log",
+            "/var/www/html/HerikaServer/log/output_to_plugin.log",
+            "/var/www/html/HerikaServer/log/context_sent_to_llm.log",
+            # DISTRO logs
+            "/home/dwemer/xtts-api-server/log.txt",
+            "/home/dwemer/minime-t5/log.txt",
+            "/home/dwemer/remote-faster-whisper/log.txt",
+            "/home/dwemer/MeloTTS/melo/log.txt", # Corrected path
+            "/home/dwemer/mimic3/log.txt"
+        ]
+        
+        combined_log_content = "" # Initialize empty string for combined logs
+        files_not_found = []
+
+        startupinfo = subprocess.STARTUPINFO()
+        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        startupinfo.wShowWindow = 0  # SW_HIDE
+
+        for log_file in log_files:
+            self.append_output(f"Reading {log_file}...")
+            cmd = [
+                "wsl", "-d", "DwemerAI4Skyrim3", "--",
+                "tail", "-n", "1000", log_file
+            ]
+            try:
+                # Use run instead of Popen to capture output directly
+                result = subprocess.run(
+                    cmd, 
+                    capture_output=True, 
+                    text=True, 
+                    check=False, # Don't raise error if tail fails (e.g., file not found)
+                    startupinfo=startupinfo,
+                    creationflags=subprocess.CREATE_NO_WINDOW,
+                    encoding='utf-8', errors='ignore' # Handle potential encoding issues
+                )
+
+                if result.returncode == 0:
+                    combined_log_content += f"--- Start of {log_file} ---\n"
+                    combined_log_content += result.stdout
+                    combined_log_content += f"\n--- End of {log_file} ---\n\n"
+                else:
+                    # Handle cases where tail fails (file not found, permission error, etc.)
+                    files_not_found.append(log_file)
+                    error_message = result.stderr.strip() if result.stderr else "Unknown error"
+                    self.append_output(f"  -> Could not read {log_file}: {error_message}\n", "red")
+            except FileNotFoundError:
+                 self.append_output("Error: 'wsl' command not found. Is WSL installed and in PATH?\n", "red")
+                 return # Cannot proceed without WSL
+            except Exception as e:
+                self.append_output(f"Error running tail for {log_file}: {e}\n", "red")
+                files_not_found.append(log_file)
+
+        if files_not_found:
+            self.append_output(f"Warning: Could not read the following files: {', '.join(files_not_found)}\n", "yellow")
+
+        if not combined_log_content:
+            self.append_output("No log content was gathered. Diagnostics file not created.\n", "red")
+            return
+
+        self.append_output("Log gathering complete. Please choose where to save the diagnostics file.")
+
+        # Prompt user for save location (must run in main thread)
+        def ask_save_file():
+            try:
+                # Default filename suggestion with timestamp
+                timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                default_filename = f"chim_diagnostics_{timestamp}.cfg"
+                
+                save_path = tkinter.filedialog.asksaveasfilename(
+                    title="Save Diagnostics File",
+                    defaultextension=".cfg",
+                    filetypes=[("Config files", "*.cfg"), ("All files", "*.*")],
+                    initialfile=default_filename
+                )
+
+                if save_path:
+                    try:
+                        with open(save_path, 'w', encoding='utf-8') as f:
+                            f.write(combined_log_content)
+                        self.append_output(f"\nDiagnostics file saved to: {save_path}\n", "green") # Added newline at the start
+                        # Add the user message about AIAgent.log
+                        user_message = (
+                            "MAKE SURE TO SHARE YOUR AIAgent.log\n"
+                            "Located in:\n"
+                            r"C:\Users\YOURUSER\Documents\My Games\Skyrim Special Edition\SKSE\Plugins\AIAgent.log"
+                            "\nOR\n"
+                            r"C:\Users\YOURUSER\Documents\My Games\Skyrim\SKSE\Plugins\AIAgent.log"
+                        )
+                        self.append_output(f"\n{user_message}\n", "yellow") # Use yellow for visibility
+                    except Exception as e:
+                        self.append_output(f"Error saving diagnostics file: {e}\n", "red")
+                        messagebox.showerror("Save Error", f"Could not save the diagnostics file:\n{e}")
+                else:
+                    self.append_output("Save operation cancelled.\n")
+            except Exception as e:
+                # Catch potential errors during filedialog display
+                self.append_output(f"Error opening save dialog: {e}\n", "red")
+                messagebox.showerror("Dialog Error", f"Could not open the save file dialog:\n{e}")
+                
+        # Schedule the save dialog in the main GUI thread
+        self.after(0, ask_save_file)
 
 if __name__ == "__main__":
     app = CHIMLauncher()
