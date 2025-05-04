@@ -184,6 +184,10 @@ class CHIMLauncher(tk.Tk):
 
         self.bold_font = font.Font(family="Futura CondensedLight", size=12, weight="bold")
         
+        # Link handling for output area
+        self.link_tag_counter = 0
+        self.link_tags = {}
+
         # Initialize server running state
         self.server_running = False
         self.server_starting = False  # Flag to indicate server is starting
@@ -300,8 +304,19 @@ class CHIMLauncher(tk.Tk):
             self.wsl_ip = None # Can't get IP, clear it
             return None
         except subprocess.CalledProcessError as e:
-            # Log only if the IP check *itself* fails, not on every request fail
-            self.append_output(f"Error checking WSL IP: {e}\n") 
+            # Check if the error is specifically because the distro is not found
+            distro_not_found_msg = "no distribution with the supplied name"
+            if e.stderr and distro_not_found_msg in e.stderr.lower():
+                error_message = (
+                    "Dwemer Distro is not installed! Download it here:\n"
+                    "https://www.nexusmods.com/skyrimspecialedition/mods/126330?tab=files"
+                )
+                self.append_output(f"Error: {error_message}\n", "red")
+                # Use after() to ensure messagebox runs on the main thread
+                self.after(0, lambda: messagebox.showerror("Distro Not Found", error_message))
+            else:
+                # Log other CalledProcessErrors as before
+                self.append_output(f"Error checking WSL IP: {e}\nStderr: {e.stderr}\n")
             self.wsl_ip = None # Assume IP is invalid if command fails
             return None
         except Exception as e:
@@ -840,6 +855,24 @@ class CHIMLauncher(tk.Tk):
             # Destroy the window 
             self.destroy()
 
+    def _on_link_enter(self, event, tag_name):
+        """Handle mouse entering a link tag."""
+        self.output_area.config(cursor="hand2")
+
+    def _on_link_leave(self, event, tag_name):
+        """Handle mouse leaving a link tag."""
+        self.output_area.config(cursor="")
+
+    def _on_link_click(self, event, tag_name):
+        """Handle mouse clicking a link tag."""
+        url = self.link_tags.get(tag_name)
+        if url:
+            try:
+                webbrowser.open_new(url)
+            except Exception as e:
+                print(f"Error opening link '{url}': {e}")
+                self.append_output(f"Error opening link: {e}\n", "red")
+
     def append_output(self, text, tag=None):
         # Remove ANSI escape sequences from the text
         clean_text = self.remove_ansi_escape_sequences(text)
@@ -848,13 +881,53 @@ class CHIMLauncher(tk.Tk):
         if self.is_unwanted_line(clean_text):
             return  # Skip appending this line
 
+        # Regex to find URLs
+        url_regex = re.compile(r'(https?://\S+)')
+
         # Append text to the output area in a thread-safe way
         def update_text():
             self.output_area.config(state=tk.NORMAL)
-            if tag:
-                self.output_area.insert(tk.END, clean_text, tag)
-            else:
-                self.output_area.insert(tk.END, clean_text)
+            last_end = 0
+            found_link = False
+            for match in url_regex.finditer(clean_text):
+                found_link = True
+                start, end = match.span()
+                url = match.group(0)
+
+                # Insert text before the link
+                if start > last_end:
+                    if tag:
+                        self.output_area.insert(tk.END, clean_text[last_end:start], tag)
+                    else:
+                        self.output_area.insert(tk.END, clean_text[last_end:start])
+
+                # Create unique tag for this link
+                link_tag_name = f"link_{self.link_tag_counter}"
+                self.link_tag_counter += 1
+                self.link_tags[link_tag_name] = url
+
+                # Insert the link text with its unique tag and the original tag (if any)
+                tags_to_apply = (link_tag_name,)
+                if tag:
+                    tags_to_apply += (tag,)
+                self.output_area.insert(tk.END, url, tags_to_apply)
+
+                # Configure the link tag appearance and bindings
+                self.output_area.tag_config(link_tag_name, foreground="#6495ED", underline=True) # Cornflower blue
+                # Use lambda to capture the current tag name for the event handlers
+                self.output_area.tag_bind(link_tag_name, "<Enter>", lambda e, name=link_tag_name: self._on_link_enter(e, name))
+                self.output_area.tag_bind(link_tag_name, "<Leave>", lambda e, name=link_tag_name: self._on_link_leave(e, name))
+                self.output_area.tag_bind(link_tag_name, "<Button-1>", lambda e, name=link_tag_name: self._on_link_click(e, name))
+
+                last_end = end
+
+            # Insert any remaining text after the last link (or the whole text if no links)
+            if last_end < len(clean_text):
+                if tag:
+                    self.output_area.insert(tk.END, clean_text[last_end:], tag)
+                else:
+                    self.output_area.insert(tk.END, clean_text[last_end:])
+
             self.output_area.see(tk.END)
             self.output_area.config(state=tk.DISABLED)
 
