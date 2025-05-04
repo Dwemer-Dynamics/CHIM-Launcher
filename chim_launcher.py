@@ -94,51 +94,18 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
             # update_ui_callback("ok", latency_ms) # Removed UI update
             response.close()
 
+        # Add back essential exception handling, without connection status logic
         except requests.exceptions.ConnectionError:
-            # Log failure only if connection was previously reported as ok AND server was ready
-            if launcher.wsl_connection_reported and launcher.wsl_server_ready:
-                 launcher.after(0, launcher.append_output, "WSL Connection to Skyrim Lost!\n", "red")
-                 launcher.wsl_connection_reported = False # RESET flag on confirmed loss
-            # launcher.wsl_connection_reported = False # REMOVE: Don't reset on error - This comment is now wrong, we DO reset
-            # error_msg = ... (Hidden log)
             self.send_error(503, "WSL Service Unavailable (Connection Error)")
-            # launcher.append_output(error_msg) # Hidden log
-            # launcher.wsl_ip = None # REMOVE: Don't clear IP on connection error, only on discovery failure
-            # update_ui_callback("error", None) # Removed UI update
         except requests.exceptions.Timeout:
-            # Log failure only if connection was previously reported as ok AND server was ready
-            if launcher.wsl_connection_reported and launcher.wsl_server_ready:
-                 launcher.after(0, launcher.append_output, "WSL Connection to Skyrim Lost!\n", "red")
-                 launcher.wsl_connection_reported = False # RESET flag on confirmed loss
-            # launcher.wsl_connection_reported = False # REMOVE: Don't reset on error - This comment is now wrong, we DO reset
-            # error_msg = ... (Hidden log)
             self.send_error(504, "Gateway Timeout")
-            # launcher.append_output(error_msg) # Hidden log
-            # update_ui_callback("error", None) # Removed UI update
         except requests.exceptions.RequestException as e:
-            # Log failure only if connection was previously reported as ok AND server was ready
-            if launcher.wsl_connection_reported and launcher.wsl_server_ready:
-                 launcher.after(0, launcher.append_output, f"WSL Connection to Skyrim Lost!\n", "red")
-                 launcher.wsl_connection_reported = False # RESET flag on confirmed loss
-            # launcher.wsl_connection_reported = False # REMOVE: Don't reset on error - This comment is now wrong, we DO reset
-            # error_msg = ... (Hidden log)
             self.send_error(500, f"Internal Proxy Error: {e}")
-            # launcher.append_output(error_msg) # Hidden log
-            # update_ui_callback("error", None) # Removed UI update
         except Exception as e:
-            # Log failure only if connection was previously reported as ok AND server was ready
-            if launcher.wsl_connection_reported and launcher.wsl_server_ready:
-                 launcher.after(0, launcher.append_output, f"WSL Connection to Skyrim Lost!\n", "red")
-                 launcher.wsl_connection_reported = False # RESET flag on confirmed loss
-            # launcher.wsl_connection_reported = False # REMOVE: Don't reset on error - This comment is now wrong, we DO reset
-            # error_msg = ... (Hidden log)
             try:
                 self.send_error(500, "Internal Server Error")
             except Exception:
-                pass 
-            finally:
-                # update_ui_callback("error", None) # Removed UI update
-                pass # Ensure finally block isn't empty
+                pass
 
     def do_GET(self):
         self._forward_request()
@@ -208,8 +175,8 @@ class CHIMLauncher(tk.Tk):
         self.proxy_port = 7513 # Port the launcher will listen on
         # self.proxy_status = "neutral" # Removed proxy status tracking
 
-        # Add flag for connection status logging
-        self.wsl_connection_reported = False 
+        # Add flag for connection status logging - REMOVED
+        # self.wsl_connection_reported = False
         self.wsl_server_ready = False # Flag to track if WSL server reported ready
 
         self.create_widgets()
@@ -463,8 +430,8 @@ class CHIMLauncher(tk.Tk):
             'padx': 10,              
             'pady': 5,               
             'cursor': 'hand2',
-            'relief': 'groove',
-            'borderwidth': 2,
+            'relief': 'flat',        # Changed from 'groove' to 'flat'
+            'borderwidth': 0,        # Changed from 2 to 0
             'highlightthickness': 0,
             'font': ("Trebuchet MS", 12, "bold")
         }
@@ -579,10 +546,10 @@ class CHIMLauncher(tk.Tk):
         base_link_button_style = {
             'width': 10,
             'font': ("Trebuchet MS", 10, "bold"),
-            'fg': 'white', 
+            'fg': 'white',
             'activeforeground': 'white',
-            'relief': 'groove',
-            'borderwidth': 2,
+            'relief': 'flat',        # Changed from 'groove' to 'flat'
+            'borderwidth': 0,        # Changed from 2 to 0
             'highlightthickness': 0,
             'cursor': 'hand2'
         }
@@ -675,8 +642,8 @@ class CHIMLauncher(tk.Tk):
             messagebox.showinfo("Server Status", "The server is already running or starting.")
             return
 
-        # Reset connection flags on start
-        self.wsl_connection_reported = False
+        # Reset connection flags on start - REMOVED wsl_connection_reported
+        # self.wsl_connection_reported = False
         self.wsl_server_ready = False
         
         # Update flags and button states
@@ -780,8 +747,8 @@ class CHIMLauncher(tk.Tk):
             )
             self.append_output("DwemerDistro terminated.\n") # Clarified message
 
-            # Reset connection flags after successful stop
-            self.wsl_connection_reported = False
+            # Reset connection flags after successful stop - REMOVED wsl_connection_reported
+            # self.wsl_connection_reported = False
             self.wsl_server_ready = False
 
         except Exception as e:
@@ -817,8 +784,8 @@ class CHIMLauncher(tk.Tk):
                 self.process.kill()
                 self.append_output("DwemerDistro process force killed.\n")
             
-            # Reset connection flags after successful force stop
-            self.wsl_connection_reported = False
+            # Reset connection flags after successful force stop - REMOVED wsl_connection_reported
+            # self.wsl_connection_reported = False
             self.wsl_server_ready = False
 
         except Exception as e:
@@ -1052,8 +1019,8 @@ class CHIMLauncher(tk.Tk):
             'activebackground': "#4A0404",  # Hover color
             'activeforeground': "white",
             'font': ("Trebuchet MS", 12, "bold"),
-            'relief': 'groove',
-            'borderwidth': 2,
+            'relief': 'flat',        # Changed from 'groove' to 'flat'
+            'borderwidth': 0,        # Changed from 2 to 0
             'highlightthickness': 0,
             'width': 30,
             'cursor': 'hand2'
@@ -1337,8 +1304,8 @@ class CHIMLauncher(tk.Tk):
             'activebackground': "#4A0404",  # Hover color
             'activeforeground': "white",
             'font': ("Trebuchet MS", 12, "bold"),
-            'relief': 'groove',
-            'borderwidth': 2,
+            'relief': 'flat',        # Changed from 'groove' to 'flat'
+            'borderwidth': 0,        # Changed from 2 to 0
             'highlightthickness': 0,
             'width': 29,
             'cursor': 'hand2'
