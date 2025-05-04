@@ -98,7 +98,8 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
             # Log failure only if connection was previously reported as ok AND server was ready
             if launcher.wsl_connection_reported and launcher.wsl_server_ready:
                  launcher.after(0, launcher.append_output, "WSL Connection to Skyrim Lost!\n", "red")
-            # launcher.wsl_connection_reported = False # REMOVE: Don't reset on error
+                 launcher.wsl_connection_reported = False # RESET flag on confirmed loss
+            # launcher.wsl_connection_reported = False # REMOVE: Don't reset on error - This comment is now wrong, we DO reset
             # error_msg = ... (Hidden log)
             self.send_error(503, "WSL Service Unavailable (Connection Error)")
             # launcher.append_output(error_msg) # Hidden log
@@ -108,7 +109,8 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
             # Log failure only if connection was previously reported as ok AND server was ready
             if launcher.wsl_connection_reported and launcher.wsl_server_ready:
                  launcher.after(0, launcher.append_output, "WSL Connection to Skyrim Lost!\n", "red")
-            # launcher.wsl_connection_reported = False # REMOVE: Don't reset on error
+                 launcher.wsl_connection_reported = False # RESET flag on confirmed loss
+            # launcher.wsl_connection_reported = False # REMOVE: Don't reset on error - This comment is now wrong, we DO reset
             # error_msg = ... (Hidden log)
             self.send_error(504, "Gateway Timeout")
             # launcher.append_output(error_msg) # Hidden log
@@ -117,7 +119,8 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
             # Log failure only if connection was previously reported as ok AND server was ready
             if launcher.wsl_connection_reported and launcher.wsl_server_ready:
                  launcher.after(0, launcher.append_output, f"WSL Connection to Skyrim Lost!\n", "red")
-            # launcher.wsl_connection_reported = False # REMOVE: Don't reset on error
+                 launcher.wsl_connection_reported = False # RESET flag on confirmed loss
+            # launcher.wsl_connection_reported = False # REMOVE: Don't reset on error - This comment is now wrong, we DO reset
             # error_msg = ... (Hidden log)
             self.send_error(500, f"Internal Proxy Error: {e}")
             # launcher.append_output(error_msg) # Hidden log
@@ -126,7 +129,8 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
             # Log failure only if connection was previously reported as ok AND server was ready
             if launcher.wsl_connection_reported and launcher.wsl_server_ready:
                  launcher.after(0, launcher.append_output, f"WSL Connection to Skyrim Lost!\n", "red")
-            # launcher.wsl_connection_reported = False # REMOVE: Don't reset on error
+                 launcher.wsl_connection_reported = False # RESET flag on confirmed loss
+            # launcher.wsl_connection_reported = False # REMOVE: Don't reset on error - This comment is now wrong, we DO reset
             # error_msg = ... (Hidden log)
             try:
                 self.send_error(500, "Internal Server Error")
