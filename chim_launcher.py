@@ -178,11 +178,11 @@ class CHIMLauncher(tk.Tk):
         super().__init__()
         self.title("CHIM")
         # Make window wider and taller, disable resizing
-        self.geometry("900x800")  # Increased height
+        self.geometry("900x860")  # Increased height
         self.configure(bg="#2C2C2C")
         self.resizable(False, False) # Disable resizing
 
-        self.bold_font = font.Font(family="Futura CondensedLight", size=12, weight="bold")
+        self.bold_font = font.Font(family="Trebuchet MS", size=12, weight="bold")
         
         # Link handling for output area
         self.link_tag_counter = 0
@@ -361,21 +361,67 @@ class CHIMLauncher(tk.Tk):
         # middle_frame = tk.Frame(self, bg="#2C2C2C")
         # middle_frame.grid(row=0, column=1, sticky="nsew", padx=5, pady=10)
         
-        # --- Output Area (Column 1) --- 
-        self.output_area = scrolledtext.ScrolledText(
-            self, # Place back in main window
+        # --- Output Area Frame (Column 1) ---
+        output_frame = tk.Frame(self, bg="#1e1e1e")
+        output_frame.grid(row=0, column=1, sticky="nsew", padx=(0, 10), pady=10)
+        output_frame.grid_rowconfigure(0, weight=1)
+        output_frame.grid_columnconfigure(0, weight=1)
+
+        # Create the Text widget
+        self.output_area = tk.Text(
+            output_frame, # Place inside the frame
             bg="#1e1e1e",
             fg="white",
-            font=("Futura CondensedLight", 10),
+            font=("Consolas", 10),
             wrap=tk.WORD,
-            width=40 # Keep initial width constraint for now
+            borderwidth=0, # Remove text border
+            highlightthickness=0, # Remove highlight border
+            width=40 # Add initial width hint
         )
-        # Place output area in the second column (index 1)
-        self.output_area.grid(row=0, column=1, sticky="nsew", padx=(0, 10), pady=10) 
-        self.output_area.config(state=tk.DISABLED)
-        # Configure color tags
+        self.output_area.grid(row=0, column=0, sticky="nsew")
+
+        # Create the ttk Scrollbar
+        self.output_scrollbar = ttk.Scrollbar(
+            output_frame, # Place inside the frame
+            orient=tk.VERTICAL,
+            command=self.output_area.yview # Link scrollbar to text view
+        )
+        self.output_scrollbar.grid(row=0, column=1, sticky="ns")
+
+        # Link text view scrolling to scrollbar
+        self.output_area.config(yscrollcommand=self.output_scrollbar.set)
+
+        # Configure color tags (apply to tk.Text widget)
         self.output_area.tag_config('green', foreground='lime green')
         self.output_area.tag_config('red', foreground='red')
+
+        # Initial state
+        self.output_area.config(state=tk.DISABLED)
+
+        # --- Style the ttk Scrollbar ---
+        style = ttk.Style()
+        style.theme_use('clam') # Use the 'clam' theme for a cleaner base
+
+        # Configure the style for Vertical.TScrollbar
+        style.configure(
+            "Vertical.TScrollbar",
+            gripcount=0,              # Number of grip dots (0 for none)
+            background="#505050",      # Color of the slider (thumb)
+            darkcolor="#3a3a3a",       # Border dark color (may not be visible with flat relief)
+            lightcolor="#3a3a3a",      # Border light color (may not be visible with flat relief)
+            troughcolor="#1e1e1e",    # Color of the channel the slider moves in
+            bordercolor="#1e1e1e",    # Border color of the trough
+            arrowcolor="#cccccc",      # Color of the arrows (if visible)
+            relief="flat"             # Make it flat
+        )
+        # Optionally remove arrows by redefining the layout (can be theme-dependent)
+        # style.layout("Vertical.TScrollbar",
+        #     [('Vertical.Scrollbar.trough', {'children':
+        #         [('Vertical.Scrollbar.thumb', {'expand': '1', 'sticky': 'nswe'})],
+        #     'sticky': 'ns'})])
+
+        # Apply the style to our specific scrollbar instance
+        self.output_scrollbar.config(style="Vertical.TScrollbar")
 
         # --- Content for Left Frame --- 
         # Load the image
@@ -397,7 +443,7 @@ class CHIMLauncher(tk.Tk):
                 text="CHIM",
                 fg="white",
                 bg="#2C2C2C",
-                font=("Futura CondensedLight", 24)
+                font=("Trebuchet MS", 24)
             )
             title_label.pack(pady=10)
 
@@ -405,7 +451,7 @@ class CHIMLauncher(tk.Tk):
         labelframe_style = {
             'bg': "#2C2C2C", 
             'fg': "white", 
-            'font': ("Futura CondensedLight", 11, "bold"),
+            'font': ("Trebuchet MS", 11, "bold"),
             'padx': 5,
             'pady': 5
         }
@@ -420,7 +466,7 @@ class CHIMLauncher(tk.Tk):
             'relief': 'groove',
             'borderwidth': 2,
             'highlightthickness': 0,
-            'font': ("Futura CondensedLight", 12, "bold")
+            'font': ("Trebuchet MS", 12, "bold")
         }
 
         # Define standard button colors for hover effect
@@ -474,7 +520,7 @@ class CHIMLauncher(tk.Tk):
             text="Checking for Updates...", # Initial text
             fg="white",
             bg="#2C2C2C",
-            font=("Futura CondensedLight", 10)
+            font=("Trebuchet MS", 10)
         )
         # Pack the label AFTER update_button
         self.update_status_label.pack(pady=5, fill=tk.X) 
@@ -525,14 +571,14 @@ class CHIMLauncher(tk.Tk):
 
         # Create an inner frame to hold the buttons for centering
         inner_link_frame = tk.Frame(external_links_frame, bg="#2C2C2C")
-        # Pack the inner frame in the center
-        inner_link_frame.pack(anchor=tk.CENTER)
+        # Pack the inner frame (removed anchor=tk.CENTER, added pady)
+        inner_link_frame.pack(pady=5)
 
         # Add Link Buttons to Inner Frame 
         # Define base link button style (common settings)
         base_link_button_style = {
             'width': 10,
-            'font': ("Futura CondensedLight", 10, "bold"),
+            'font': ("Trebuchet MS", 10, "bold"),
             'fg': 'white', 
             'activeforeground': 'white',
             'relief': 'groove',
@@ -987,7 +1033,7 @@ class CHIMLauncher(tk.Tk):
         # Create a new Toplevel window
         submenu_window = tk.Toplevel(self)
         submenu_window.title("Install Components")
-        submenu_window.geometry("500x720")  # Increased height for description
+        submenu_window.geometry("500x820")  # Increased height for description
         submenu_window.configure(bg="#2C2C2C")
         submenu_window.resizable(False, False)
         # Set the window icon to CHIM.png
@@ -1005,7 +1051,7 @@ class CHIMLauncher(tk.Tk):
             'fg': "white",
             'activebackground': "#4A0404",  # Hover color
             'activeforeground': "white",
-            'font': ("Futura CondensedLight", 12, "bold"),
+            'font': ("Trebuchet MS", 12, "bold"),
             'relief': 'groove',
             'borderwidth': 2,
             'highlightthickness': 0,
@@ -1023,7 +1069,7 @@ class CHIMLauncher(tk.Tk):
             text="Component Description",
             bg="#2C2C2C",
             fg="white",
-            font=("Futura CondensedLight", 11, "bold"),
+            font=("Trebuchet MS", 11, "bold"),
             padx=10, pady=5
         )
         desc_frame.pack(pady=(10, 5), padx=10, fill=tk.X)
@@ -1033,7 +1079,7 @@ class CHIMLauncher(tk.Tk):
             text="Hover over a component below to see its description.", # Initial text
             bg="#2C2C2C",
             fg="white",
-            font=("Futura CondensedLight", 10),
+            font=("Trebuchet MS", 10),
             wraplength=460, # Wrap text within the frame width
             justify="left",
             height=4 # Allocate space for ~3 lines + padding
@@ -1128,7 +1174,7 @@ class CHIMLauncher(tk.Tk):
             text="READ THIS!",
             bg="#2C2C2C",
             fg="white",
-            font=("Futura CondensedLight", 12, "bold")
+            font=("Trebuchet MS", 12, "bold")
         )
         readme_frame.pack(fill="both", expand=True, padx=10, pady=10)
 
@@ -1138,7 +1184,7 @@ class CHIMLauncher(tk.Tk):
             text="NVIDIA GPU users:",
             bg="#2C2C2C",
             fg="white",
-            font=("Futura CondensedLight", 10, "bold"),
+            font=("Trebuchet MS", 10, "bold"),
             anchor="w"
         )
         nvidia_header.pack(pady=(10, 0), padx=0, fill="x")
@@ -1153,7 +1199,7 @@ class CHIMLauncher(tk.Tk):
             fg="white",
             wraplength=480,  # Adjust wrap length as needed
             justify="left",
-            font=("Futura CondensedLight", 10),
+            font=("Trebuchet MS", 10),
             anchor="w"
         )
         nvidia_label.pack(pady=(0, 10), padx=0, fill="x")
@@ -1164,7 +1210,7 @@ class CHIMLauncher(tk.Tk):
             text="AMD GPU users:",
             bg="#2C2C2C",
             fg="white",
-            font=("Futura CondensedLight", 10, "bold"),
+            font=("Trebuchet MS", 10, "bold"),
             anchor="w"
         )
         amd_header.pack(pady=(10, 0), padx=0, fill="x")
@@ -1180,7 +1226,7 @@ class CHIMLauncher(tk.Tk):
             fg="white",
             wraplength=480,  # Adjust wrap length as needed
             justify="left",
-            font=("Futura CondensedLight", 10),
+            font=("Trebuchet MS", 10),
             anchor="w"
         )
         amd_label.pack(pady=(0, 10), padx=0, fill="x")
@@ -1191,7 +1237,7 @@ class CHIMLauncher(tk.Tk):
             text="GPU Usage",
             bg="#2C2C2C",
             fg="white",
-            font=("Futura CondensedLight", 12, "bold"),
+            font=("Trebuchet MS", 12, "bold"),
             anchor="w"
         )
         gpu_header.pack(pady=(10, 5), padx=0, fill="x")
@@ -1227,11 +1273,11 @@ class CHIMLauncher(tk.Tk):
                         background="#2C2C2C",
                         foreground="white",
                         fieldbackground="#2C2C2C",
-                        font=("Futura CondensedLight", 10))
+                        font=("Trebuchet MS", 10))
         style.configure("Treeview.Heading",
                         background="#5E0505",  # Deep red
                         foreground="white",
-                        font=("Futura CondensedLight", 10, "bold"))
+                        font=("Trebuchet MS", 10, "bold"))
         # Remove hover effect by setting active color same as normal
         style.map("Treeview",
                 background=[('selected', '#2C2C2C')],
@@ -1271,7 +1317,7 @@ class CHIMLauncher(tk.Tk):
         # Create a new Toplevel window
         debug_window = tk.Toplevel(self)
         debug_window.title("Debugging")
-        debug_window.geometry("440x550")  # Increased height
+        debug_window.geometry("440x600")  # Increased height
         debug_window.configure(bg="#2C2C2C")
         debug_window.resizable(False, False)
 
@@ -1290,7 +1336,7 @@ class CHIMLauncher(tk.Tk):
             'fg': "white",
             'activebackground': "#4A0404",  # Hover color
             'activeforeground': "white",
-            'font': ("Futura CondensedLight", 12, "bold"),
+            'font': ("Trebuchet MS", 12, "bold"),
             'relief': 'groove',
             'borderwidth': 2,
             'highlightthickness': 0,
@@ -1307,7 +1353,7 @@ class CHIMLauncher(tk.Tk):
         standard_button_hover_bg = '#4A0404'
 
         # --- Generate Diagnostics Section (Moved to Top) ---
-        tk.Label(debug_button_frame, text="--- Diagnostics ---", bg="#2C2C2C", fg="white", font=("Futura CondensedLight", 10, "bold")).pack(pady=(0, 5))
+        tk.Label(debug_button_frame, text="--- Diagnostics ---", bg="#2C2C2C", fg="white", font=("Trebuchet MS", 10, "bold")).pack(pady=(0, 5))
         generate_diagnostics_btn = tk.Button(
             debug_button_frame,
             text="Create Diagnostic File",
@@ -1323,7 +1369,7 @@ class CHIMLauncher(tk.Tk):
         branch_display = f"Switch Branch (Current: {current_branch})" if current_branch else "Switch Branch"
 
         # --- Actions Section ---
-        tk.Label(debug_button_frame, text="--- Distro Actions ---", bg="#2C2C2C", fg="white", font=("Futura CondensedLight", 10, "bold")).pack(pady=(0, 5))
+        tk.Label(debug_button_frame, text="--- Distro Actions ---", bg="#2C2C2C", fg="white", font=("Trebuchet MS", 10, "bold")).pack(pady=(0, 5))
         action_commands = [
             ("Open Terminal", self.open_terminal),
             ("View Memory Usage", self.view_memory_usage),
@@ -1342,7 +1388,7 @@ class CHIMLauncher(tk.Tk):
         ttk.Separator(debug_button_frame, orient='horizontal').pack(fill='x', pady=10) # Separator
 
         # --- View Logs Section ---
-        tk.Label(debug_button_frame, text="--- View Logs ---", bg="#2C2C2C", fg="white", font=("Futura CondensedLight", 10, "bold")).pack(pady=(0, 5))
+        tk.Label(debug_button_frame, text="--- View Logs ---", bg="#2C2C2C", fg="white", font=("Trebuchet MS", 10, "bold")).pack(pady=(0, 5))
         log_view_commands = [
             ("View CHIM XTTS Logs", self.view_xtts_logs),
             ("View MeloTTS Logs", self.view_melotts_logs),
