@@ -987,7 +987,7 @@ class CHIMLauncher(tk.Tk):
         # Create a new Toplevel window
         submenu_window = tk.Toplevel(self)
         submenu_window.title("Install Components")
-        submenu_window.geometry("500x630")  # Adjusted size to accommodate the table
+        submenu_window.geometry("500x720")  # Increased height for description
         submenu_window.configure(bg="#2C2C2C")
         submenu_window.resizable(False, False)
         # Set the window icon to CHIM.png
@@ -1017,64 +1017,110 @@ class CHIMLauncher(tk.Tk):
         standard_button_bg = '#5E0505'
         standard_button_hover_bg = '#4A0404'
 
-        # Create a frame for the buttons
+        # --- Component Description Section ---
+        desc_frame = tk.LabelFrame(
+            submenu_window,
+            text="Component Description",
+            bg="#2C2C2C",
+            fg="white",
+            font=("Futura CondensedLight", 11, "bold"),
+            padx=10, pady=5
+        )
+        desc_frame.pack(pady=(10, 5), padx=10, fill=tk.X)
+
+        desc_label = tk.Label(
+            desc_frame,
+            text="Hover over a component below to see its description.", # Initial text
+            bg="#2C2C2C",
+            fg="white",
+            font=("Futura CondensedLight", 10),
+            wraplength=460, # Wrap text within the frame width
+            justify="left",
+            height=4 # Allocate space for ~3 lines + padding
+        )
+        desc_label.pack(fill=tk.X, pady=5)
+
+        # --- Buttons Section ---
         button_frame = tk.Frame(submenu_window, bg="#2C2C2C")
-        button_frame.pack(pady=10)
-        
-        # Create buttons
+        button_frame.pack(pady=5)
+
+        # --- Descriptions Dictionary ---
+        component_descriptions = {
+            "CUDA": "Nvidia's parallel computing platform. Required for GPU acceleration for components such as CHIM XTTS. Install this first if you have a Nvidia GPU.",
+            "CHIM XTTS": "A High-quality and realistic Text-to-Speech (TTS) service. Requires an Nvidia GPU with sufficient VRAM (4GB+) and CUDA installed. Provides immersive NPC voices with the ability to generate new ones easily.",
+            "MeloTTS": "A fast, and efficient Text-to-Speech (TTS) service ideal for low-end systems. Runs efficiently on CPU, making it a great option for systems without Nvidia GPUs or for lower resource usage.",
+            "Minime-T5": "A tiny helper Large Language Model (LLM). Used by CHIM to improve AI NPC responses. Runs on GPU or CPU using only 400MB of memory.",
+            "Mimic3": "An older but fast Text-to-Speech (TTS) service. Does not come with Skyrim voices.",
+            "LocalWhisper": "Offline Speech-to-Text (STT) service based on OpenAI's Whisper. Allows you to use your microphone to chat with NPCs. Recommended to have CUDA installed."
+        }
+
+        # --- Hover Handler for Install Buttons ---
+        def install_button_hover_handler(button, normal_bg, hover_bg, component_key, description_label):
+            desc_text = component_descriptions.get(component_key, "No description available.")
+            def on_enter(e):
+                button['background'] = hover_bg
+                description_label.config(text=desc_text)
+            def on_leave(e):
+                button['background'] = normal_bg
+                # Reset to initial text when mouse leaves *any* button
+                description_label.config(text="Hover over a component below to see its description.")
+            button.bind('<Enter>', on_enter)
+            button.bind('<Leave>', on_leave)
+
+        # Create buttons & Apply Hover Handler
         install_cuda_button = tk.Button(
             button_frame,
-            text="Install CUDA",
+            text="💽 Install CUDA",
             command=self.install_cuda,
             **button_style
         )
         install_cuda_button.pack(pady=5)
-        self.add_hover_effects(install_cuda_button, standard_button_bg, standard_button_hover_bg)
+        install_button_hover_handler(install_cuda_button, standard_button_bg, standard_button_hover_bg, "CUDA", desc_label)
 
         install_xtts_button = tk.Button(
             button_frame,
-            text="Install CHIM XTTS",
+            text="🗣 Install CHIM XTTS",
             command=self.install_xtts,
             **button_style
         )
         install_xtts_button.pack(pady=5)
-        self.add_hover_effects(install_xtts_button, standard_button_bg, standard_button_hover_bg)
+        install_button_hover_handler(install_xtts_button, standard_button_bg, standard_button_hover_bg, "CHIM XTTS", desc_label)
 
         install_melotts_button = tk.Button(
             button_frame,
-            text="Install MeloTTS",
+            text="🗣 Install MeloTTS",
             command=self.install_melotts,
             **button_style
         )
         install_melotts_button.pack(pady=5)
-        self.add_hover_effects(install_melotts_button, standard_button_bg, standard_button_hover_bg)
+        install_button_hover_handler(install_melotts_button, standard_button_bg, standard_button_hover_bg, "MeloTTS", desc_label)
 
         install_minime_t5_button = tk.Button(
             button_frame,
-            text="Install Minime-T5",
+            text="🧠 Install Minime-T5",
             command=self.install_minime_t5,
             **button_style
         )
         install_minime_t5_button.pack(pady=5)
-        self.add_hover_effects(install_minime_t5_button, standard_button_bg, standard_button_hover_bg)
+        install_button_hover_handler(install_minime_t5_button, standard_button_bg, standard_button_hover_bg, "Minime-T5", desc_label)
 
         install_mimic3_button = tk.Button(
             button_frame,
-            text="Install Mimic3",
+            text="🗣 Install Mimic3",
             command=self.install_mimic3,
             **button_style
         )
         install_mimic3_button.pack(pady=5)
-        self.add_hover_effects(install_mimic3_button, standard_button_bg, standard_button_hover_bg)
-        
+        install_button_hover_handler(install_mimic3_button, standard_button_bg, standard_button_hover_bg, "Mimic3", desc_label)
+
         install_localwhisper_button = tk.Button(
             button_frame,
-            text="Install LocalWhisper",
+            text="🎙 Install LocalWhisper",
             command=self.install_localwhisper,
             **button_style
         )
         install_localwhisper_button.pack(pady=5)
-        self.add_hover_effects(install_localwhisper_button, standard_button_bg, standard_button_hover_bg)
+        install_button_hover_handler(install_localwhisper_button, standard_button_bg, standard_button_hover_bg, "LocalWhisper", desc_label)
 
         # README Section
         readme_frame = tk.LabelFrame(
