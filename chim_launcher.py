@@ -2219,7 +2219,17 @@ class CHIMLauncher(tk.Tk):
 
     def generate_diagnostics(self):
         """Starts the diagnostics generation process in a new thread."""
-        threading.Thread(target=self.generate_diagnostics_thread, daemon=True).start()
+        # Show a warning message before proceeding
+        warning = messagebox.askokcancel(
+            "Diagnostic Information Warning", 
+            "Heads Up! Information generated will include the latest interactions you have had with CHIM.\n\nDo you want to continue?",
+            icon=messagebox.WARNING
+        )
+        
+        if warning:
+            threading.Thread(target=self.generate_diagnostics_thread, daemon=True).start()
+        else:
+            self.append_output("Diagnostic file creation cancelled.\n")
 
     def generate_diagnostics_thread(self):
         """Gathers logs from specified files in WSL and saves them to a user-chosen file."""
