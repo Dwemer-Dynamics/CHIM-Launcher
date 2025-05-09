@@ -145,7 +145,7 @@ class CHIMLauncher(tk.Tk):
         super().__init__()
         self.title("CHIM")
         # Make window wider and taller, disable resizing
-        self.geometry("900x860")  # Increased height
+        self.geometry("870x870") 
         self.configure(bg="#2C2C2C")
         self.resizable(False, False) # Disable resizing
 
@@ -189,10 +189,10 @@ class CHIMLauncher(tk.Tk):
         
         # Start the update check in a separate thread
         threading.Thread(target=self.check_for_updates, daemon=True).start()
-
+        
         # Start the proxy server
         self.start_proxy_server()
-        
+
     def start_proxy_server(self):
         """Starts the HTTP proxy server in a separate thread."""
         try:
@@ -440,12 +440,12 @@ class CHIMLauncher(tk.Tk):
         standard_button_bg = '#5E0505'
         standard_button_hover_bg = '#4A0404'
 
-        # --- Server Controls Group --- 
-        server_controls_frame = tk.LabelFrame(left_frame, text="Server Controls", **labelframe_style)
-        server_controls_frame.pack(pady=10, padx=5, fill=tk.X)
+        # --- Start Servers Group --- 
+        start_servers_frame = tk.LabelFrame(left_frame, text="Server Controls", **labelframe_style)
+        start_servers_frame.pack(pady=10, padx=5, fill=tk.X)
         
         self.start_button = tk.Button(
-            server_controls_frame, # Put in correct frame
+            start_servers_frame,
             text=self.original_start_text,
             command=self.start_wsl,
             **button_style
@@ -454,7 +454,7 @@ class CHIMLauncher(tk.Tk):
         self.add_hover_effects(self.start_button, standard_button_bg, standard_button_hover_bg)
 
         self.stop_button = tk.Button(
-            server_controls_frame, # Put in correct frame
+            start_servers_frame,
             text="Stop Server",
             command=self.stop_wsl,
             state=tk.DISABLED,
@@ -464,7 +464,7 @@ class CHIMLauncher(tk.Tk):
         self.add_hover_effects(self.stop_button, standard_button_bg, standard_button_hover_bg)
 
         self.force_stop_button = tk.Button(
-            server_controls_frame, # Put in correct frame
+            start_servers_frame,
             text="Force Stop Server",
             command=self.force_stop_wsl,
             **button_style
@@ -472,34 +472,29 @@ class CHIMLauncher(tk.Tk):
         self.force_stop_button.pack(fill=tk.X, pady=5)
         self.add_hover_effects(self.force_stop_button, standard_button_bg, standard_button_hover_bg)
 
-        self.update_distro_button = tk.Button(
-            server_controls_frame,
-            text="Update Distro",
-            command=self.update_distro,
-            **button_style
-        )
-        self.update_distro_button.pack(fill=tk.X, pady=5)
-        self.add_hover_effects(self.update_distro_button, standard_button_bg, standard_button_hover_bg)
+        # --- Server Updates Group --- 
+        server_updates_frame = tk.LabelFrame(left_frame, text="Update Controls", **labelframe_style)
+        server_updates_frame.pack(pady=10, padx=5, fill=tk.X)
 
+        # Replace separate update buttons with a single Update button
         self.update_button = tk.Button(
-            server_controls_frame, # Put in correct frame
-            text="Update Server",
-            command=self.update_wsl,
+            server_updates_frame,
+            text="Update",
+            command=self.update_all,
             **button_style
         )
         self.update_button.pack(fill=tk.X, pady=5)
         self.add_hover_effects(self.update_button, standard_button_bg, standard_button_hover_bg)
 
-        # Create and pack the update status label here
+        # Create and pack the update status label
         self.update_status_label = tk.Label(
-            server_controls_frame, # Put back in server controls frame
-            text="Checking for Updates...", # Initial text
+            server_updates_frame,
+            text="Checking for Updates...",
             fg="white",
             bg="#2C2C2C",
             font=("Trebuchet MS", 10)
         )
-        # Pack the label AFTER update_button
-        self.update_status_label.pack(pady=5, fill=tk.X) 
+        self.update_status_label.pack(pady=5, fill=tk.X)
 
         # --- Server Configuration Group --- 
         server_config_frame = tk.LabelFrame(left_frame, text="Server Configuration", **labelframe_style)
@@ -812,19 +807,11 @@ class CHIMLauncher(tk.Tk):
         threading.Thread(target=self.update_wsl_thread, daemon=True).start()
 
     def update_wsl_thread(self):
-        # original_button_text = self.update_button.cget("text") # No longer needed
         try:
-            # Disable the Update button 
-            self.after(0, lambda: self.update_button.config(state=tk.DISABLED))
-            # self.after(0, lambda: self.update_button.config(state=tk.DISABLED, text="Update Server\n(Updating...)", fg="white")) # Removed text/color change
-
             # Confirm update with the user
             confirm = messagebox.askyesno("Update Server", "This will update the CHIM server. Are you sure?")
             if not confirm:
                 self.append_output("Update canceled.\n")
-                # Re-enable button if cancelled
-                self.after(0, lambda: self.update_button.config(state=tk.NORMAL))
-                # self.after(0, lambda: self.update_button.config(state=tk.NORMAL, text=original_button_text)) # Removed text restore
                 return
 
             # Run the update command
@@ -850,28 +837,35 @@ class CHIMLauncher(tk.Tk):
 
             update_process.wait()
 
-            self.append_output("Update completed.\n")
+            # Get the current branch for the success message
+            current_branch = self.get_current_branch() or "unknown"
+            self.append_output(f"Update completed successfully. Branch: {current_branch}\n", "green")
+            
+            # Set update status to show it's up-to-date immediately
+            # Make sure to update the main thread UI directly
+            def update_status_label():
+                self.update_status_label.config(
+                    text=f"Up-to-date ({current_branch})",
+                    fg="lime green"
+                )
+            self.after(0, update_status_label)
 
+        except Exception as e:
+            self.append_output(f"Error during update: {e}\n", "red")
         finally:
-            # Re-enable the Update button 
-            self.after(0, lambda: self.update_button.config(state=tk.NORMAL))
-            # Check for updates after the update process completes 
-            self.after(100, lambda: threading.Thread(target=self.check_for_updates, daemon=True).start()) # Short delay before check
+            # We don't need to run the check immediately since we've already updated the label
+            # But keep it for verification after a delay
+            self.after(1000, lambda: threading.Thread(target=self.check_for_updates, daemon=True).start())
 
     def update_distro(self):
         threading.Thread(target=self.update_distro_thread, daemon=True).start()
 
     def update_distro_thread(self):
         try:
-            # Disable the Update Distro button 
-            self.after(0, lambda: self.update_distro_button.config(state=tk.DISABLED))
-
             # Confirm update with the user
             confirm = messagebox.askyesno("Update Distro", "This will update the CHIM distro. Are you sure?")
             if not confirm:
                 self.append_output("Distro update canceled.\n")
-                # Re-enable button if cancelled
-                self.after(0, lambda: self.update_distro_button.config(state=tk.NORMAL))
                 return
 
             self.append_output("Starting distro update...\n")
@@ -946,15 +940,25 @@ class CHIMLauncher(tk.Tk):
                 
                 pull_process.wait()
             
+            # Get repository version before running update script
+            get_repo_version_cmd = ["wsl", "-d", "DwemerAI4Skyrim3", "-u", "dwemer", "--", "bash", "-c", 
+                          "cd /home/dwemer/dwemerdistro && cat .version.txt"]
+            
+            repo_version_result = subprocess.run(
+                get_repo_version_cmd,
+                capture_output=True,
+                text=True,
+                startupinfo=startupinfo,
+                creationflags=subprocess.CREATE_NO_WINDOW
+            )
+            repo_version = repo_version_result.stdout.strip()
+            
             # Run the update.sh script
             self.append_output("Running update script...\n")
-            self.append_output("This will update system scripts and configuration files:\n")
-            self.append_output(" - Copying scripts from dwemerdistro/bin to /usr/local/bin\n")
-            self.append_output(" - Copying config files from dwemerdistro/etc to /etc\n")
             
             # Run the script with sudo
             update_script_cmd = ["wsl", "-d", "DwemerAI4Skyrim3", "-u", "dwemer", "--", "bash", "-c", 
-                               "cd /home/dwemer/dwemerdistro && chmod +x update.sh && echo 'dwemer' | sudo -S ./update.sh"]
+                           "cd /home/dwemer/dwemerdistro && chmod +x update.sh && echo 'dwemer' | sudo -S ./update.sh"]
             
             update_script_process = subprocess.Popen(
                 update_script_cmd,
@@ -974,16 +978,47 @@ class CHIMLauncher(tk.Tk):
             
             # Simple verification by checking if the process completed successfully
             if update_script_process.returncode == 0:
-                self.append_output("✅ Distro update completed successfully.\n")
-                self.append_output("System scripts and configuration have been updated.\n")
+                # Update was successful, now make sure the version file exists in both locations
+                if repo_version:
+                    # Update both possible locations to ensure consistency
+                    update_version_cmd = ["wsl", "-d", "DwemerAI4Skyrim3", "-u", "dwemer", "--", "bash", "-c", 
+                                      f"echo '{repo_version}' | sudo tee /etc/.version.txt > /dev/null && " +
+                                      f"echo '{repo_version}' | tee /home/dwemer/dwemerdistro/.version.txt > /dev/null"]
+                    
+                    subprocess.run(
+                        update_version_cmd,
+                        startupinfo=startupinfo,
+                        creationflags=subprocess.CREATE_NO_WINDOW
+                    )
+                    self.append_output(f"Distro updated to version {repo_version}.\n", "green")
+                    
+                    # Use the server version check after update
+                    self.after(0, lambda: self.update_status_label.config(
+                        text="Checking for Updates...",
+                        fg="white"
+                    ))
+                    self.after(1000, lambda: threading.Thread(target=self.check_for_updates, daemon=True).start())
+                else:
+                    self.append_output("Distro update completed successfully.\n", "green")
+                    
+                    # Use the server version check after update
+                    self.after(0, lambda: self.update_status_label.config(
+                        text="Checking for Updates...",
+                        fg="white"
+                    ))
+                    self.after(1000, lambda: threading.Thread(target=self.check_for_updates, daemon=True).start())
             else:
-                self.append_output(f"❌ Distro update may have encountered issues (exit code: {update_script_process.returncode}).\n", "red")
+                self.append_output(f"Distro update may have encountered issues (exit code: {update_script_process.returncode}).\n", "red")
 
         except Exception as e:
             self.append_output(f"Error during distro update: {e}\n", "red")
         finally:
-            # Re-enable the Update Distro button 
-            self.after(0, lambda: self.update_distro_button.config(state=tk.NORMAL))
+            # Check status after a delay to verify
+            self.after(1000, lambda: threading.Thread(target=self.check_for_updates, daemon=True).start())
+
+    def refresh_distro_version(self):
+        """Refreshes the distro version display after an update."""
+        self.check_distro_version()
 
     def on_close(self):
         # Confirm exit with the user
@@ -1729,25 +1764,60 @@ class CHIMLauncher(tk.Tk):
             return None
 
     def compare_versions(self, v1, v2):
-        """Compare two version strings.
+        """Compare two version strings. Works with both semantic versions like "1.2.3" 
+        and single numeric versions like "2025050619" (date-based).
 
         Returns:
             -1 if v1 < v2
              0 if v1 == v2
              1 if v1 > v2
         """
-        v1_parts = [int(part) for part in v1.strip().split('.')]
-        v2_parts = [int(part) for part in v2.strip().split('.')]
-        # Pad the shorter version with zeros
-        length = max(len(v1_parts), len(v2_parts))
-        v1_parts.extend([0] * (length - len(v1_parts)))
-        v2_parts.extend([0] * (length - len(v2_parts)))
-        for i in range(length):
-            if v1_parts[i] < v2_parts[i]:
+        # Handle case when versions are exactly the same strings
+        if v1 == v2:
+            return 0
+            
+        try:
+            # Check if both are simple numeric strings (like date-based versions)
+            if v1.isdigit() and v2.isdigit():
+                # Compare as integers
+                v1_int = int(v1)
+                v2_int = int(v2)
+                
+                if v1_int < v2_int:
+                    return -1
+                elif v1_int > v2_int:
+                    return 1
+                else:
+                    return 0
+            
+            # Otherwise, handle as semantic versions with dots
+            # Split version strings by dots and convert to integers
+            v1_parts = [int(part) for part in v1.strip().split('.')]
+            v2_parts = [int(part) for part in v2.strip().split('.')]
+            
+            # Pad the shorter version with zeros
+            length = max(len(v1_parts), len(v2_parts))
+            v1_parts.extend([0] * (length - len(v1_parts)))
+            v2_parts.extend([0] * (length - len(v2_parts)))
+            
+            # Compare components
+            for i in range(length):
+                if v1_parts[i] < v2_parts[i]:
+                    return -1
+                elif v1_parts[i] > v2_parts[i]:
+                    return 1
+                    
+            # If we reach here, they're equal
+            return 0
+        except (ValueError, AttributeError) as e:
+            # If there's any error parsing versions, fall back to string comparison
+            self.append_output(f"[DEBUG] Version parsing error: {e}. Using string comparison.\n")
+            if v1 < v2:
                 return -1
-            elif v1_parts[i] > v2_parts[i]:
+            elif v1 > v2:
                 return 1
-        return 0
+            else:
+                return 0
 
     def get_current_branch(self):
         """Get the current git branch."""
@@ -1931,6 +2001,219 @@ class CHIMLauncher(tk.Tk):
                 
         # Schedule the save dialog in the main GUI thread
         self.after(0, ask_save_file)
+
+    def check_distro_version(self):
+        """Check if a newer distro version is available and update the status label."""
+        # Use after(0, ...) to ensure UI updates happen on the main thread
+        update_label_config = lambda config: self.after(0, self.distro_version_label.config, config)
+
+        # Initial state while checking
+        update_label_config({"text": "Checking Distro Version...", "fg": "white"})
+
+        try:
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = 0
+
+            # Check repository version directly with curl for consistency
+            check_repo_version_cmd = ["wsl", "-d", "DwemerAI4Skyrim3", "-u", "dwemer", "--", "bash", "-c", 
+                                "curl -s https://raw.githubusercontent.com/abeiro/dwemerdistro/main/.version.txt"]
+            
+            repo_version_result = subprocess.run(
+                check_repo_version_cmd,
+                capture_output=True,
+                text=True,
+                startupinfo=startupinfo,
+                creationflags=subprocess.CREATE_NO_WINDOW
+            )
+            repo_version = repo_version_result.stdout.strip()
+            
+            # Remove debug output
+            # self.append_output(f"[DEBUG] Repository version: {repo_version}\n")
+            
+            if not repo_version:
+                final_text = "Repository version not found"
+                text_color = "yellow"
+                update_label_config({"text": final_text, "fg": text_color})
+                return
+
+            # Check current installed version - check both possible locations
+            check_current_version_cmd = ["wsl", "-d", "DwemerAI4Skyrim3", "-u", "dwemer", "--", "bash", "-c", 
+                                   "cat /home/dwemer/dwemerdistro/.version.txt 2>/dev/null || cat /etc/.version.txt 2>/dev/null || echo 'not_installed'"]
+            
+            current_version_result = subprocess.run(
+                check_current_version_cmd,
+                capture_output=True,
+                text=True,
+                startupinfo=startupinfo,
+                creationflags=subprocess.CREATE_NO_WINDOW
+            )
+            current_version = current_version_result.stdout.strip()
+            
+            # Remove debug output
+            # self.append_output(f"[DEBUG] Local version: {current_version}\n")
+            
+            # Force update local version if it's different from repo (for testing)
+            force_update = False
+            if force_update and current_version != "not_installed" and current_version != repo_version:
+                update_version_cmd = ["wsl", "-d", "DwemerAI4Skyrim3", "-u", "dwemer", "--", "bash", "-c", 
+                                 f"echo '{repo_version}' | sudo tee /home/dwemer/dwemerdistro/.version.txt > /dev/null"]
+                subprocess.run(
+                    update_version_cmd,
+                    startupinfo=startupinfo,
+                    creationflags=subprocess.CREATE_NO_WINDOW
+                )
+                # Remove debug output
+                # self.append_output(f"[DEBUG] Forced local version update to: {repo_version}\n")
+                current_version = repo_version
+            
+            final_text = ""
+            text_color = "white" # Default color
+
+            if current_version == "not_installed":
+                # No version file found - likely first run
+                final_text = f"Distro Update Available!"
+                text_color = "red"
+            elif current_version:
+                # Simple string comparison first for exact match
+                if current_version == repo_version:
+                    final_text = f"Distro is Up-to-date"
+                    text_color = "lime green"
+                else:
+                    # Use semantic version comparison as backup
+                    comparison = self.compare_versions(current_version, repo_version)
+                    # Remove debug output
+                    # self.append_output(f"[DEBUG] Version comparison result: {comparison}\n")
+                    
+                    if comparison < 0:
+                        # Update available
+                        final_text = f"Distro Update Available!"
+                        text_color = "red"
+                    else:
+                        # Up-to-date or newer
+                        final_text = f"Distro is Up-to-date"
+                        text_color = "lime green"
+            else:
+                # Error checking current version 
+                final_text = "Error checking local version"
+                text_color = "yellow"
+        except Exception as e:
+            final_text = f"Distro Version Check Failed: {e}"
+            text_color = "yellow"
+        
+        # Update the label with final text and color
+        update_label_config({"text": final_text, "fg": text_color})
+
+    def update_all(self):
+        """Perform a complete update of both distro and server components."""
+        threading.Thread(target=self.update_all_thread, daemon=True).start()
+
+    def update_all_thread(self):
+        try:
+            # First confirm the update with the user
+            confirm = messagebox.askyesno("Update System", "This will update both the CHIM distro and server components. Are you sure?")
+            if not confirm:
+                self.append_output("Update canceled.\n")
+                return
+
+            # Update status to indicate we're working
+            self.after(0, lambda: self.update_status_label.config(
+                text="Running update...",
+                fg="white"
+            ))
+
+            self.append_output("Starting full system update...\n")
+            
+            # Run everything in a single command
+            self.append_output("\nSTEP 1: Updating CHIM distro...\n", "green")
+            self.append_output("Running update script...\n")
+            
+            # Prepare the combined update command
+            # This will run the distro update and then echo a marker, then run the server update
+            combined_cmd = ["wsl", "-d", "DwemerAI4Skyrim3", "-u", "dwemer", "--", "bash", "-c", 
+                        "cd /home/dwemer/dwemerdistro && " +
+                        "git fetch origin && git reset --hard origin/main && " +
+                        "chmod +x update.sh && echo 'dwemer' | sudo -S ./update.sh && " +
+                        "echo '=====MARKER:BEGIN_SERVER_UPDATE=====' && " +
+                        "/usr/local/bin/update_gws"]
+            
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = 0  # 0 = SW_HIDE
+            
+            # Start the combined process
+            update_process = subprocess.Popen(
+                combined_cmd,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                startupinfo=startupinfo,
+                creationflags=subprocess.CREATE_NO_WINDOW
+            )
+            
+            # Variables to track update phases
+            distro_update_complete = False
+            server_update_started = False
+            server_update_complete = False
+            
+            # Read output line by line
+            for line in update_process.stdout:
+                # Check for our marker line
+                if "=====MARKER:BEGIN_SERVER_UPDATE=====" in line:
+                    distro_update_complete = True
+                    server_update_started = True
+                    self.append_output("\nSTEP 2: Updating CHIM server...\n", "green")
+                    continue  # Skip the marker line itself
+                
+                # Output the line
+                self.append_output(line)
+                
+                # Check if server update is complete (look for common completion messages)
+                if server_update_started and ("Successfully" in line or "Completed" in line):
+                    server_update_complete = True
+            
+            # Process has ended
+            update_process.wait()
+            
+            # Check the final state
+            if update_process.returncode == 0 and distro_update_complete:
+                # Get the current branch for the success message
+                current_branch = self.get_current_branch() or "unknown"
+                
+                if server_update_complete:
+                    self.append_output(f"Full system update completed successfully! Branch: {current_branch}\n", "green")
+                else:
+                    self.append_output(f"Update completed. Branch: {current_branch}\n", "green")
+                    
+                # Set update status to show it's up-to-date
+                self.after(0, lambda: self.update_status_label.config(
+                    text=f"Up-to-date ({current_branch})",
+                    fg="lime green"
+                ))
+            else:
+                # Something went wrong
+                if not distro_update_complete:
+                    self.append_output("Distro update did not complete successfully.\n", "red")
+                elif not server_update_complete:
+                    self.append_output("Server update may not have completed successfully.\n", "red")
+                
+                self.after(0, lambda: self.update_status_label.config(
+                    text="Update may have issues - see log",
+                    fg="red"
+                ))
+                
+        except Exception as e:
+            self.append_output(f"Error during update: {str(e)}\n", "red")
+            import traceback
+            self.append_output(f"Traceback: {traceback.format_exc()}\n", "red")
+            self.after(0, lambda: self.update_status_label.config(
+                text="Update error - see log",
+                fg="red"
+            ))
+        finally:
+            # Run the check for updates after a short delay to verify
+            self.after(2000, lambda: threading.Thread(target=self.check_for_updates, daemon=True).start())
 
 if __name__ == "__main__":
     app = CHIMLauncher()
