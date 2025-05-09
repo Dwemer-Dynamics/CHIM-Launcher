@@ -1367,7 +1367,7 @@ class CHIMLauncher(tk.Tk):
         # Create a new Toplevel window
         submenu_window = tk.Toplevel(self)
         submenu_window.title("Install Components")
-        submenu_window.geometry("500x785")  # Increased height for description
+        submenu_window.geometry("500x860")  
         submenu_window.configure(bg="#2C2C2C")
         submenu_window.resizable(False, False)
         # Set the window icon to CHIM.png
@@ -1378,6 +1378,29 @@ class CHIMLauncher(tk.Tk):
             submenu_window.iconphoto(False, photo)  # Set the icon
         except Exception as e:
             print(f"Error setting icon: {e}")
+            
+        # Load NVIDIA and AMD icons
+        try:
+            nvidia_icon_path = get_resource_path('nvidia.png')
+            amd_icon_path = get_resource_path('amd.png')
+            nvidia_img = Image.open(nvidia_icon_path)
+            amd_img = Image.open(amd_icon_path)
+            
+            # Resize images to be appropriate for buttons (24x24 pixels)
+            nvidia_img = nvidia_img.resize((24, 24), Image.Resampling.LANCZOS)
+            amd_img = amd_img.resize((24, 24), Image.Resampling.LANCZOS)
+            
+            # Convert to Tkinter PhotoImage
+            nvidia_icon = ImageTk.PhotoImage(nvidia_img)
+            amd_icon = ImageTk.PhotoImage(amd_img)
+            
+            # Store them to prevent garbage collection
+            submenu_window.nvidia_icon = nvidia_icon
+            submenu_window.amd_icon = amd_icon
+        except Exception as e:
+            print(f"Error loading GPU icons: {e}")
+            nvidia_icon = None
+            amd_icon = None
 
         # Style options for buttons
         button_style = {
@@ -1447,60 +1470,169 @@ class CHIMLauncher(tk.Tk):
             button.bind('<Enter>', on_enter)
             button.bind('<Leave>', on_leave)
 
-        # Create buttons & Apply Hover Handler
-        install_cuda_button = tk.Button(
-            button_frame,
-            text="💽 Install CUDA",
-            command=self.install_cuda,
-            **button_style
-        )
-        install_cuda_button.pack(pady=5)
-        install_button_hover_handler(install_cuda_button, standard_button_bg, standard_button_hover_bg, "CUDA", desc_label)
+        # Helper function to create buttons with icons
+        def create_component_button(parent, text, command, component_key, show_nvidia=True, show_amd=False):
+            # Create a frame that will act as our button
+            btn_frame = tk.Frame(parent, bg=standard_button_bg)
+            btn_frame.pack(pady=5, fill=tk.X, padx=2)  # Further reduce outer padding to use more screen width
 
-        install_minime_t5_button = tk.Button(
-            button_frame,
-            text="🧠 Install Minime & TXT2VEC",
-            command=self.install_minime_t5,
-            **button_style
-        )
-        install_minime_t5_button.pack(pady=5)
-        install_button_hover_handler(install_minime_t5_button, standard_button_bg, standard_button_hover_bg, "Minime-T5", desc_label)
+            # Create inner frame to hold everything with proper padding
+            inner_frame = tk.Frame(btn_frame, bg=standard_button_bg, padx=25, pady=10)  # Increased padding for wider buttons
+            inner_frame.pack(fill=tk.X, expand=True)  # Added expand=True to fill horizontal space
+            
+            # Extract emoji and regular text from the button text
+            # Most emoji are 1-2 characters followed by a space
+            parts = text.split(" ", 1)
+            emoji = parts[0] + " " if len(parts) > 1 else ""
+            regular_text = parts[1] if len(parts) > 1 else text
+            
+            # Create a left container for icons
+            icon_container = tk.Frame(inner_frame, bg=standard_button_bg)
+            icon_container.pack(side=tk.LEFT, padx=(0, 10))  # Add space after the icons
+            
+            # Add Nvidia icon if requested
+            if show_nvidia and nvidia_icon:
+                nvidia_label = tk.Label(icon_container, image=nvidia_icon, bg=standard_button_bg)
+                nvidia_label.pack(side=tk.LEFT, padx=(0, 2))
+            
+            # Add AMD icon if requested
+            if show_amd and amd_icon:
+                amd_label = tk.Label(icon_container, image=amd_icon, bg=standard_button_bg)
+                amd_label.pack(side=tk.LEFT, padx=2)
+            
+            # Create emoji label
+            if emoji:
+                emoji_label = tk.Label(
+                    inner_frame, 
+                    text=emoji,
+                    bg=standard_button_bg,
+                    fg="white",
+                    font=("Trebuchet MS", 12, "bold")
+                )
+                emoji_label.pack(side=tk.LEFT, padx=(0, 0))
+            
+            # Create text label
+            text_label = tk.Label(
+                inner_frame, 
+                text=regular_text,
+                bg=standard_button_bg,
+                fg="white",
+                font=("Trebuchet MS", 12, "bold")
+            )
+            text_label.pack(side=tk.LEFT, padx=5)  # Added padding around text for spacing
+            
+            # Right spacer to push content to the left
+            right_spacer = tk.Frame(inner_frame, bg=standard_button_bg)
+            right_spacer.pack(side=tk.RIGHT, fill=tk.X, expand=True)
+            
+            # Bind click events to the entire frame and all children
+            btn_frame.bind("<Button-1>", lambda e: command())
+            inner_frame.bind("<Button-1>", lambda e: command())
+            icon_container.bind("<Button-1>", lambda e: command())
+            right_spacer.bind("<Button-1>", lambda e: command())
+            if emoji:
+                emoji_label.bind("<Button-1>", lambda e: command())
+            text_label.bind("<Button-1>", lambda e: command())
+            
+            if show_nvidia and nvidia_icon:
+                nvidia_label.bind("<Button-1>", lambda e: command())
+            if show_amd and amd_icon:
+                amd_label.bind("<Button-1>", lambda e: command())
+            
+            # Apply hover effects to the entire button frame
+            def on_enter(e):
+                btn_frame.config(background=standard_button_hover_bg)
+                inner_frame.config(background=standard_button_hover_bg)
+                icon_container.config(background=standard_button_hover_bg)
+                right_spacer.config(background=standard_button_hover_bg)
+                if emoji:
+                    emoji_label.config(background=standard_button_hover_bg)
+                text_label.config(background=standard_button_hover_bg)
+                if show_nvidia and nvidia_icon:
+                    nvidia_label.config(background=standard_button_hover_bg)
+                if show_amd and amd_icon:
+                    amd_label.config(background=standard_button_hover_bg)
+                desc_label.config(text=component_descriptions.get(component_key, "No description available."))
+            
+            def on_leave(e):
+                btn_frame.config(background=standard_button_bg)
+                inner_frame.config(background=standard_button_bg)
+                icon_container.config(background=standard_button_bg)
+                right_spacer.config(background=standard_button_bg)
+                if emoji:
+                    emoji_label.config(background=standard_button_bg)
+                text_label.config(background=standard_button_bg)
+                if show_nvidia and nvidia_icon:
+                    nvidia_label.config(background=standard_button_bg)
+                if show_amd and amd_icon:
+                    amd_label.config(background=standard_button_bg)
+                desc_label.config(text="Hover over a component below to see its description.")
+            
+            btn_frame.bind('<Enter>', on_enter)
+            btn_frame.bind('<Leave>', on_leave)
+            
+            # Make cursor change to hand when over any part of the button
+            btn_frame.bind("<Enter>", lambda e: btn_frame.config(cursor="hand2"))
+            btn_frame.bind("<Leave>", lambda e: btn_frame.config(cursor=""))
+            
+            # Also bind hover events to inner elements to ensure they propagate properly
+            inner_frame.bind('<Enter>', on_enter)
+            inner_frame.bind('<Leave>', on_leave)
+            icon_container.bind('<Enter>', on_enter)
+            icon_container.bind('<Leave>', on_leave)
+            right_spacer.bind('<Enter>', on_enter)
+            right_spacer.bind('<Leave>', on_leave)
+            if emoji:
+                emoji_label.bind('<Enter>', on_enter)
+                emoji_label.bind('<Leave>', on_leave)
+            text_label.bind('<Enter>', on_enter)
+            text_label.bind('<Leave>', on_leave)
+            
+            if show_nvidia and nvidia_icon:
+                nvidia_label.bind('<Enter>', on_enter)
+                nvidia_label.bind('<Leave>', on_leave)
+            if show_amd and amd_icon:
+                amd_label.bind('<Enter>', on_enter)
+                amd_label.bind('<Leave>', on_leave)
+            
+            return btn_frame
 
-        install_xtts_button = tk.Button(
-            button_frame,
-            text="🗣 Install CHIM XTTS",
-            command=self.install_xtts,
-            **button_style
+        # Create the buttons with icons
+        # CUDA - Only NVIDIA
+        cuda_button = create_component_button(
+            button_frame, "    💽 CUDA", self.install_cuda, "CUDA", 
+            show_nvidia=True, show_amd=False
         )
-        install_xtts_button.pack(pady=5)
-        install_button_hover_handler(install_xtts_button, standard_button_bg, standard_button_hover_bg, "CHIM XTTS", desc_label)
-
-        install_melotts_button = tk.Button(
-            button_frame,
-            text="🗣 Install MeloTTS",
-            command=self.install_melotts,
-            **button_style
+        
+        # Minime & TXT2VEC - NVIDIA and AMD
+        minime_button = create_component_button(
+            button_frame, "🧠Minime&TXT2VEC", self.install_minime_t5, "Minime-T5", 
+            show_nvidia=True, show_amd=True
         )
-        install_melotts_button.pack(pady=5)
-        install_button_hover_handler(install_melotts_button, standard_button_bg, standard_button_hover_bg, "MeloTTS", desc_label)
-
-        install_mimic3_button = tk.Button(
-            button_frame,
-            text="🗣 Install Mimic3",
-            command=self.install_mimic3,
-            **button_style
+        
+        # CHIM XTTS - Only NVIDIA
+        xtts_button = create_component_button(
+            button_frame, "    🗣 CHIM XTTS", self.install_xtts, "CHIM XTTS", 
+            show_nvidia=True, show_amd=False
         )
-        install_mimic3_button.pack(pady=5)
-        install_button_hover_handler(install_mimic3_button, standard_button_bg, standard_button_hover_bg, "Mimic3", desc_label)
-
-        install_localwhisper_button = tk.Button(
-            button_frame,
-            text="🎙 Install LocalWhisper",
-            command=self.install_localwhisper,
-            **button_style
+        
+        # MeloTTS - NVIDIA and AMD
+        melotts_button = create_component_button(
+            button_frame, "🗣MeloTTS", self.install_melotts, "MeloTTS", 
+            show_nvidia=True, show_amd=True
         )
-        install_localwhisper_button.pack(pady=5)
-        install_button_hover_handler(install_localwhisper_button, standard_button_bg, standard_button_hover_bg, "LocalWhisper", desc_label)
+        
+        # Mimic3 - NVIDIA and AMD
+        mimic3_button = create_component_button(
+            button_frame, "🗣Mimic3", self.install_mimic3, "Mimic3", 
+            show_nvidia=True, show_amd=True
+        )
+        
+        # LocalWhisper - NVIDIA and AMD
+        localwhisper_button = create_component_button(
+            button_frame, "🎙LocalWhisper", self.install_localwhisper, "LocalWhisper", 
+            show_nvidia=True, show_amd=True
+        )
 
         # README Section
         readme_frame = tk.LabelFrame(
@@ -1550,8 +1682,8 @@ class CHIMLauncher(tk.Tk):
         amd_header.pack(pady=(10, 0), padx=0, fill="x")
 
         amd_text = (
-            "You can only install MeloTTS, Mimic3 and Minime-T5 in CPU mode only! "
-            "This is because AMD cards do not support CUDA."
+            "You can only install MeloTTS, Mimic3, LocalWhisper and Minime-T5 in CPU mode only! "
+            "This is because AMD cards do not support CUDA. They will run a bit slower."
         )
         amd_label = tk.Label(
             readme_frame,
