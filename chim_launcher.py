@@ -472,6 +472,15 @@ class CHIMLauncher(tk.Tk):
         self.force_stop_button.pack(fill=tk.X, pady=5)
         self.add_hover_effects(self.force_stop_button, standard_button_bg, standard_button_hover_bg)
 
+        self.update_distro_button = tk.Button(
+            server_controls_frame,
+            text="Update Distro",
+            command=self.update_distro,
+            **button_style
+        )
+        self.update_distro_button.pack(fill=tk.X, pady=5)
+        self.add_hover_effects(self.update_distro_button, standard_button_bg, standard_button_hover_bg)
+
         self.update_button = tk.Button(
             server_controls_frame, # Put in correct frame
             text="Update Server",
@@ -848,6 +857,133 @@ class CHIMLauncher(tk.Tk):
             self.after(0, lambda: self.update_button.config(state=tk.NORMAL))
             # Check for updates after the update process completes 
             self.after(100, lambda: threading.Thread(target=self.check_for_updates, daemon=True).start()) # Short delay before check
+
+    def update_distro(self):
+        threading.Thread(target=self.update_distro_thread, daemon=True).start()
+
+    def update_distro_thread(self):
+        try:
+            # Disable the Update Distro button 
+            self.after(0, lambda: self.update_distro_button.config(state=tk.DISABLED))
+
+            # Confirm update with the user
+            confirm = messagebox.askyesno("Update Distro", "This will update the CHIM distro. Are you sure?")
+            if not confirm:
+                self.append_output("Distro update canceled.\n")
+                # Re-enable button if cancelled
+                self.after(0, lambda: self.update_distro_button.config(state=tk.NORMAL))
+                return
+
+            self.append_output("Starting distro update...\n")
+            
+            # Run git pull command to update the repository
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = 0  # 0 = SW_HIDE
+
+            # First, check if the directory exists, create it if not
+            check_dir_cmd = ["wsl", "-d", "DwemerAI4Skyrim3", "-u", "dwemer", "--", "bash", "-c", 
+                         "mkdir -p /home/dwemer/dwemerdistro"]
+            
+            subprocess.run(
+                check_dir_cmd,
+                startupinfo=startupinfo,
+                creationflags=subprocess.CREATE_NO_WINDOW
+            )
+
+            # Check if this is a git repository already
+            check_git_cmd = ["wsl", "-d", "DwemerAI4Skyrim3", "-u", "dwemer", "--", "bash", "-c", 
+                         "cd /home/dwemer/dwemerdistro && git status 2>/dev/null || echo 'Not a git repository'"]
+            
+            result = subprocess.run(
+                check_git_cmd,
+                capture_output=True,
+                text=True,
+                startupinfo=startupinfo,
+                creationflags=subprocess.CREATE_NO_WINDOW
+            )
+
+            # If not a git repository, clone it
+            if "Not a git repository" in result.stdout:
+                self.append_output("Cloning dwemerdistro repository...\n")
+                clone_cmd = ["wsl", "-d", "DwemerAI4Skyrim3", "-u", "dwemer", "--", "bash", "-c", 
+                          "cd /home/dwemer && git clone https://github.com/abeiro/dwemerdistro.git"]
+                
+                clone_process = subprocess.Popen(
+                    clone_cmd,
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    startupinfo=startupinfo,
+                    creationflags=subprocess.CREATE_NO_WINDOW
+                )
+                
+                # Read output line by line
+                for line in clone_process.stdout:
+                    self.append_output(line)
+                
+                clone_process.wait()
+            else:
+                # Update the existing repository
+                self.append_output("Updating dwemerdistro repository...\n")
+                pull_cmd = ["wsl", "-d", "DwemerAI4Skyrim3", "-u", "dwemer", "--", "bash", "-c", 
+                         "cd /home/dwemer/dwemerdistro && git fetch origin && git reset --hard origin/main"]
+                
+                pull_process = subprocess.Popen(
+                    pull_cmd,
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    startupinfo=startupinfo,
+                    creationflags=subprocess.CREATE_NO_WINDOW
+                )
+                
+                # Read output line by line
+                for line in pull_process.stdout:
+                    self.append_output(line)
+                
+                pull_process.wait()
+            
+            # Run the update.sh script
+            self.append_output("Running update script...\n")
+            self.append_output("This will update system scripts and configuration files:\n")
+            self.append_output(" - Copying scripts from dwemerdistro/bin to /usr/local/bin\n")
+            self.append_output(" - Copying config files from dwemerdistro/etc to /etc\n")
+            
+            # Run the script with sudo
+            update_script_cmd = ["wsl", "-d", "DwemerAI4Skyrim3", "-u", "dwemer", "--", "bash", "-c", 
+                               "cd /home/dwemer/dwemerdistro && chmod +x update.sh && echo 'dwemer' | sudo -S ./update.sh"]
+            
+            update_script_process = subprocess.Popen(
+                update_script_cmd,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                startupinfo=startupinfo,
+                creationflags=subprocess.CREATE_NO_WINDOW
+            )
+            
+            # Read output line by line
+            for line in update_script_process.stdout:
+                self.append_output(line)
+            
+            update_script_process.wait()
+            
+            # Simple verification by checking if the process completed successfully
+            if update_script_process.returncode == 0:
+                self.append_output("✅ Distro update completed successfully.\n")
+                self.append_output("System scripts and configuration have been updated.\n")
+            else:
+                self.append_output(f"❌ Distro update may have encountered issues (exit code: {update_script_process.returncode}).\n", "red")
+
+        except Exception as e:
+            self.append_output(f"Error during distro update: {e}\n", "red")
+        finally:
+            # Re-enable the Update Distro button 
+            self.after(0, lambda: self.update_distro_button.config(state=tk.NORMAL))
 
     def on_close(self):
         # Confirm exit with the user
