@@ -358,9 +358,13 @@ class CHIMLauncher(tk.Tk):
         # Link text view scrolling to scrollbar
         self.output_area.config(yscrollcommand=self.output_scrollbar.set)
 
-        # Configure color tags (apply to tk.Text widget)
+        # Configure basic color tags
         self.output_area.tag_config('green', foreground='lime green')
         self.output_area.tag_config('red', foreground='red')
+        
+        # We'll initialize ANSI color tags on first use in process_ansi_escape_sequences
+        # Mark that we haven't initialized them yet
+        self._ansi_tags_initialized = False
 
         # Initial state
         self.output_area.config(state=tk.DISABLED)
@@ -1058,11 +1062,11 @@ class CHIMLauncher(tk.Tk):
                 self.append_output(f"Error opening link: {e}\n", "red")
 
     def append_output(self, text, tag=None):
-        # Remove ANSI escape sequences from the text
-        clean_text = self.remove_ansi_escape_sequences(text)
+        # Process ANSI escape sequences in the text instead of removing them
+        processed_text, ansi_tags = self.process_ansi_escape_sequences(text)
 
         # Check if the cleaned text matches unwanted patterns
-        if self.is_unwanted_line(clean_text):
+        if self.is_unwanted_line(processed_text):
             return  # Skip appending this line
 
         # Regex to find URLs
@@ -1071,54 +1075,239 @@ class CHIMLauncher(tk.Tk):
         # Append text to the output area in a thread-safe way
         def update_text():
             self.output_area.config(state=tk.NORMAL)
-            last_end = 0
-            found_link = False
-            for match in url_regex.finditer(clean_text):
-                found_link = True
-                start, end = match.span()
-                url = match.group(0)
-
-                # Insert text before the link
-                if start > last_end:
-                    if tag:
-                        self.output_area.insert(tk.END, clean_text[last_end:start], tag)
-                    else:
-                        self.output_area.insert(tk.END, clean_text[last_end:start])
-
-                # Create unique tag for this link
-                link_tag_name = f"link_{self.link_tag_counter}"
-                self.link_tag_counter += 1
-                self.link_tags[link_tag_name] = url
-
-                # Insert the link text with its unique tag and the original tag (if any)
-                tags_to_apply = (link_tag_name,)
-                if tag:
-                    tags_to_apply += (tag,)
-                self.output_area.insert(tk.END, url, tags_to_apply)
-
-                # Configure the link tag appearance and bindings
-                self.output_area.tag_config(link_tag_name, foreground="#6495ED", underline=True) # Cornflower blue
-                # Use lambda to capture the current tag name for the event handlers
-                self.output_area.tag_bind(link_tag_name, "<Enter>", lambda e, name=link_tag_name: self._on_link_enter(e, name))
-                self.output_area.tag_bind(link_tag_name, "<Leave>", lambda e, name=link_tag_name: self._on_link_leave(e, name))
-                self.output_area.tag_bind(link_tag_name, "<Button-1>", lambda e, name=link_tag_name: self._on_link_click(e, name))
-
-                last_end = end
-
-            # Insert any remaining text after the last link (or the whole text if no links)
-            if last_end < len(clean_text):
-                if tag:
-                    self.output_area.insert(tk.END, clean_text[last_end:], tag)
-                else:
-                    self.output_area.insert(tk.END, clean_text[last_end:])
-
+            
+            # If we have ANSI color tags, use them for styling
+            if ansi_tags:
+                current_pos = 0
+                for start, end, color in ansi_tags:
+                    # Insert text before the colored segment with regular tag
+                    if start > current_pos:
+                        pre_text = processed_text[current_pos:start]
+                        # Process URLs in this segment
+                        self._insert_with_url_detection(pre_text, tag)
+                    
+                    # Insert the colored segment with its color tag
+                    colored_text = processed_text[start:end]
+                    # Process URLs in the colored segment
+                    self._insert_with_url_detection(colored_text, color)
+                    
+                    current_pos = end
+                
+                # Insert any remaining text after the last colored segment
+                if current_pos < len(processed_text):
+                    remaining_text = processed_text[current_pos:]
+                    self._insert_with_url_detection(remaining_text, tag)
+            else:
+                # No ANSI colors, just insert with regular tag and URL detection
+                self._insert_with_url_detection(processed_text, tag)
+            
             self.output_area.see(tk.END)
             self.output_area.config(state=tk.DISABLED)
 
         self.output_area.after(0, update_text)
+    
+    def _insert_with_url_detection(self, text, tag=None):
+        """Helper method to insert text with URL detection and optional tag."""
+        url_regex = re.compile(r'(https?://\S+)')
+        last_end = 0
+        found_link = False
+        
+        for match in url_regex.finditer(text):
+            found_link = True
+            start, end = match.span()
+            url = match.group(0)
 
-    def remove_ansi_escape_sequences(self, text):
-        # Regular expression to match ANSI escape sequences
+            # Insert text before the link
+            if start > last_end:
+                if tag:
+                    self.output_area.insert(tk.END, text[last_end:start], tag)
+                else:
+                    self.output_area.insert(tk.END, text[last_end:start])
+
+            # Create unique tag for this link
+            link_tag_name = f"link_{self.link_tag_counter}"
+            self.link_tag_counter += 1
+            self.link_tags[link_tag_name] = url
+
+            # Insert the link text with its unique tag and the original tag (if any)
+            tags_to_apply = (link_tag_name,)
+            if tag:
+                tags_to_apply += (tag,)
+            self.output_area.insert(tk.END, url, tags_to_apply)
+
+            # Configure the link tag appearance and bindings
+            self.output_area.tag_config(link_tag_name, foreground="#6495ED", underline=True) # Cornflower blue
+            self.output_area.tag_bind(link_tag_name, "<Enter>", lambda e, name=link_tag_name: self._on_link_enter(e, name))
+            self.output_area.tag_bind(link_tag_name, "<Leave>", lambda e, name=link_tag_name: self._on_link_leave(e, name))
+            self.output_area.tag_bind(link_tag_name, "<Button-1>", lambda e, name=link_tag_name: self._on_link_click(e, name))
+
+            last_end = end
+
+        # Insert any remaining text after the last link (or the whole text if no links)
+        if last_end < len(text):
+            if tag:
+                self.output_area.insert(tk.END, text[last_end:], tag)
+            else:
+                self.output_area.insert(tk.END, text[last_end:])
+
+    def process_ansi_escape_sequences(self, text):
+        """Process ANSI escape sequences in text, returning cleaned text and color tags.
+        
+        Returns:
+            tuple: (cleaned_text, list_of_tags)
+            - cleaned_text: Text with ANSI escape sequences removed
+            - list_of_tags: List of (start, end, tag_name) tuples for colored regions
+        """
+        # Regular expression to match ANSI color codes
+        ansi_color_pattern = re.compile(r'\x1B\[((?:\d+;)*\d+)m')
+        
+        # ANSI color code to Tkinter tag mapping
+        ansi_to_tag = {
+            '0': None,       # Reset
+            '1': 'bold',     # Bold
+            '2': None,       # Dim (not supported)
+            '3': None,       # Italic (not supported)
+            '4': None,       # Underline (not supported)
+            '22': None,      # Reset bold
+            '30': 'black',   # Black
+            '31': 'red',     # Red
+            '32': 'green',   # Green
+            '33': 'yellow',  # Yellow
+            '34': 'blue',    # Blue
+            '35': 'purple',  # Purple/Magenta
+            '36': 'cyan',    # Cyan
+            '37': 'white',   # White
+            '39': None,      # Default foreground color
+            '90': 'gray',    # Bright Black (gray)
+            '91': 'bright_red',    # Bright Red
+            '92': 'bright_green',  # Bright Green
+            '93': 'bright_yellow', # Bright Yellow
+            '94': 'bright_blue',   # Bright Blue
+            '95': 'bright_purple', # Bright Magenta
+            '96': 'bright_cyan',   # Bright Cyan
+            '97': 'bright_white',  # Bright White
+            # Bold + color combinations
+            '1;30': 'bold_black',     # Bold Black
+            '1;31': 'bold_red',       # Bold Red
+            '1;32': 'bold_green',     # Bold Green
+            '1;33': 'bold_yellow',    # Bold Yellow
+            '1;34': 'bold_blue',      # Bold Blue
+            '1;35': 'bold_purple',    # Bold Purple/Magenta
+            '1;36': 'bold_cyan',      # Bold Cyan
+            '1;37': 'bold_white',     # Bold White
+            '1;90': 'bold_gray',      # Bold Gray
+            '1;91': 'bold_bright_red',     # Bold Bright Red
+            '1;92': 'bold_bright_green',   # Bold Bright Green
+            '1;93': 'bold_bright_yellow',  # Bold Bright Yellow
+            '1;94': 'bold_bright_blue',    # Bold Bright Blue
+            '1;95': 'bold_bright_purple',  # Bold Bright Purple
+            '1;96': 'bold_bright_cyan',    # Bold Bright Cyan
+            '1;97': 'bold_bright_white',   # Bold Bright White
+        }
+        
+        # Ensure we have all the color tags defined in the text widget
+        if not hasattr(self, '_ansi_tags_initialized'):
+            # Basic styles
+            self.output_area.tag_config('bold', font=('Consolas', 10, 'bold'))
+            
+            # Basic colors
+            self.output_area.tag_config('black', foreground='black')
+            self.output_area.tag_config('red', foreground='red')
+            self.output_area.tag_config('green', foreground='lime green')
+            self.output_area.tag_config('yellow', foreground='#FFD700')  # Gold
+            self.output_area.tag_config('blue', foreground='#1E90FF')    # Dodger Blue
+            self.output_area.tag_config('purple', foreground='#DA70D6')  # Orchid
+            self.output_area.tag_config('cyan', foreground='#00FFFF')    # Cyan
+            self.output_area.tag_config('white', foreground='white')
+            self.output_area.tag_config('gray', foreground='#A9A9A9')    # Dark Gray
+            
+            # Bright colors
+            self.output_area.tag_config('bright_red', foreground='#FF6347')    # Tomato
+            self.output_area.tag_config('bright_green', foreground='#00FF00')  # Lime
+            self.output_area.tag_config('bright_yellow', foreground='#FFFF00') # Yellow
+            self.output_area.tag_config('bright_blue', foreground='#00BFFF')   # Deep Sky Blue
+            self.output_area.tag_config('bright_purple', foreground='#FF00FF') # Fuchsia
+            self.output_area.tag_config('bright_cyan', foreground='#00FFFF')   # Aqua
+            self.output_area.tag_config('bright_white', foreground='#FFFFFF')  # White
+            
+            # Bold colors
+            self.output_area.tag_config('bold_black', foreground='black', font=('Consolas', 10, 'bold'))
+            self.output_area.tag_config('bold_red', foreground='red', font=('Consolas', 10, 'bold'))
+            self.output_area.tag_config('bold_green', foreground='lime green', font=('Consolas', 10, 'bold'))
+            self.output_area.tag_config('bold_yellow', foreground='#FFD700', font=('Consolas', 10, 'bold'))
+            self.output_area.tag_config('bold_blue', foreground='#1E90FF', font=('Consolas', 10, 'bold'))
+            self.output_area.tag_config('bold_purple', foreground='#DA70D6', font=('Consolas', 10, 'bold'))
+            self.output_area.tag_config('bold_cyan', foreground='#00FFFF', font=('Consolas', 10, 'bold'))
+            self.output_area.tag_config('bold_white', foreground='white', font=('Consolas', 10, 'bold'))
+            self.output_area.tag_config('bold_gray', foreground='#A9A9A9', font=('Consolas', 10, 'bold'))
+            
+            # Bold bright colors
+            self.output_area.tag_config('bold_bright_red', foreground='#FF6347', font=('Consolas', 10, 'bold'))
+            self.output_area.tag_config('bold_bright_green', foreground='#00FF00', font=('Consolas', 10, 'bold'))
+            self.output_area.tag_config('bold_bright_yellow', foreground='#FFFF00', font=('Consolas', 10, 'bold'))
+            self.output_area.tag_config('bold_bright_blue', foreground='#00BFFF', font=('Consolas', 10, 'bold'))
+            self.output_area.tag_config('bold_bright_purple', foreground='#FF00FF', font=('Consolas', 10, 'bold'))
+            self.output_area.tag_config('bold_bright_cyan', foreground='#00FFFF', font=('Consolas', 10, 'bold'))
+            self.output_area.tag_config('bold_bright_white', foreground='#FFFFFF', font=('Consolas', 10, 'bold'))
+            
+            self._ansi_tags_initialized = True
+        
+        # Start with clean text and no tags
+        cleaned_text = ""
+        color_tags = []
+        current_tag = None
+        
+        # Split the text by ANSI escape sequences
+        segments = ansi_color_pattern.split(text)
+        i = 0
+        
+        while i < len(segments):
+            if i % 2 == 0:
+                # This is text content
+                segment_text = segments[i]
+                start_pos = len(cleaned_text)
+                cleaned_text += segment_text
+                end_pos = len(cleaned_text)
+                
+                # If we have a current tag and this segment has text, add a tag entry
+                if current_tag is not None and segment_text:
+                    color_tags.append((start_pos, end_pos, current_tag))
+            else:
+                # This is a color code
+                color_code = segments[i]
+                # Handle multiple color codes separated by semicolons
+                if ';' in color_code:
+                    # For combined codes, first check if the whole code is defined
+                    if color_code in ansi_to_tag:
+                        current_tag = ansi_to_tag[color_code]
+                    else:
+                        # Otherwise try to find the most important code
+                        codes = color_code.split(';')
+                        # First check for known combined codes
+                        if '1' in codes:  # Bold indicator
+                            # Try to find a color code
+                            for code in codes:
+                                if code in ['30', '31', '32', '33', '34', '35', '36', '37', '90', '91', '92', '93', '94', '95', '96', '97']:
+                                    bold_color_code = f"1;{code}"
+                                    if bold_color_code in ansi_to_tag:
+                                        current_tag = ansi_to_tag[bold_color_code]
+                                        break
+                        else:
+                            # Use the last recognized code
+                            for code in reversed(codes):
+                                if code in ansi_to_tag:
+                                    current_tag = ansi_to_tag[code]
+                                    break
+                elif color_code == '0':
+                    # Reset code
+                    current_tag = None
+                else:
+                    # For simple codes
+                    current_tag = ansi_to_tag.get(color_code, current_tag)
+            
+            i += 1
+        
+        # Also remove any remaining ANSI sequences we didn't handle
         ansi_escape = re.compile(r'''
             \x1B  # ESC
             (?:   # 7-bit C1 Fe (except CSI)
@@ -1130,7 +1319,14 @@ class CHIMLauncher(tk.Tk):
                 [@-~]   # Final byte
             )
         ''', re.VERBOSE)
-        return ansi_escape.sub('', text)
+        cleaned_text = ansi_escape.sub('', cleaned_text)
+        
+        return cleaned_text, color_tags
+
+    def remove_ansi_escape_sequences(self, text):
+        """Legacy method for backward compatibility."""
+        cleaned_text, _ = self.process_ansi_escape_sequences(text)
+        return cleaned_text
 
     def is_unwanted_line(self, text):
         # Define unwanted patterns
