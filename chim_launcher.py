@@ -824,7 +824,7 @@ class CHIMLauncher(tk.Tk):
             startupinfo.wShowWindow = 0  # 0 = SW_HIDE
 
             update_process = subprocess.Popen(
-                ["wsl", "-d", "DwemerAI4Skyrim3", "-u", "dwemer", "--", "/home/dwemer/dwemerdistro/bin/update_gws"],
+                ["wsl", "-d", "DwemerAI4Skyrim3", "-u", "dwemer", "--", "/usr/local/bin/update_gws"],
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
