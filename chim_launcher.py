@@ -1367,7 +1367,7 @@ class CHIMLauncher(tk.Tk):
         # Create a new Toplevel window
         submenu_window = tk.Toplevel(self)
         submenu_window.title("Install Components")
-        submenu_window.geometry("500x820")  # Increased height for description
+        submenu_window.geometry("500x785")  # Increased height for description
         submenu_window.configure(bg="#2C2C2C")
         submenu_window.resizable(False, False)
         # Set the window icon to CHIM.png
@@ -1426,12 +1426,12 @@ class CHIMLauncher(tk.Tk):
 
         # --- Descriptions Dictionary ---
         component_descriptions = {
-            "CUDA": "Nvidia's parallel computing platform. Required for GPU acceleration for components such as CHIM XTTS. Install this first if you have a Nvidia GPU.",
-            "CHIM XTTS": "A High-quality and realistic Text-to-Speech (TTS) service. Requires an Nvidia GPU with sufficient VRAM (4GB+) and CUDA installed. Provides immersive NPC voices with the ability to generate new ones easily.",
+            "CUDA": "Nvidia's special software that lets AI tools work with their graphics cards, without it programs like CHIM XTTS won't work. Install this first if you have a Nvidia GPU.",
+            "CHIM XTTS": "A High-quality and realistic Text-to-Speech (TTS) service. Requires an Nvidia GPU with sufficient VRAM (4GB+) and CUDA installed. Provides immersive NPC voices with the ability to generate new ones automatically ingame.",
             "MeloTTS": "A fast, and efficient Text-to-Speech (TTS) service ideal for low-end systems. Runs efficiently on CPU, making it a great option for systems without Nvidia GPUs or for lower resource usage.",
-            "Minime-T5": "A tiny helper Large Language Model (LLM). Used by CHIM to improve AI NPC responses. Runs on GPU or CPU using only 400MB of memory.",
+            "Minime-T5": "A tiny helper Large Language Model (LLM). Used by CHIM to improve AI NPC responses. Also comes with TXT2VEC, an efficent vector service. Runs on GPU or CPU using only 400MB of memory.",
             "Mimic3": "An older but fast Text-to-Speech (TTS) service. Does not come with Skyrim voices.",
-            "LocalWhisper": "Offline Speech-to-Text (STT) service based on OpenAI's Whisper. Allows you to use your microphone to chat with NPCs. Recommended to have CUDA installed."
+            "LocalWhisper": "Offline Speech-to-Text (STT) service based on OpenAI's Whisper. Allows you to use your microphone to chat with NPCs."
         }
 
         # --- Hover Handler for Install Buttons ---
@@ -1457,6 +1457,15 @@ class CHIMLauncher(tk.Tk):
         install_cuda_button.pack(pady=5)
         install_button_hover_handler(install_cuda_button, standard_button_bg, standard_button_hover_bg, "CUDA", desc_label)
 
+        install_minime_t5_button = tk.Button(
+            button_frame,
+            text="🧠 Install Minime & TXT2VEC",
+            command=self.install_minime_t5,
+            **button_style
+        )
+        install_minime_t5_button.pack(pady=5)
+        install_button_hover_handler(install_minime_t5_button, standard_button_bg, standard_button_hover_bg, "Minime-T5", desc_label)
+
         install_xtts_button = tk.Button(
             button_frame,
             text="🗣 Install CHIM XTTS",
@@ -1474,15 +1483,6 @@ class CHIMLauncher(tk.Tk):
         )
         install_melotts_button.pack(pady=5)
         install_button_hover_handler(install_melotts_button, standard_button_bg, standard_button_hover_bg, "MeloTTS", desc_label)
-
-        install_minime_t5_button = tk.Button(
-            button_frame,
-            text="🧠 Install Minime-T5",
-            command=self.install_minime_t5,
-            **button_style
-        )
-        install_minime_t5_button.pack(pady=5)
-        install_button_hover_handler(install_minime_t5_button, standard_button_bg, standard_button_hover_bg, "Minime-T5", desc_label)
 
         install_mimic3_button = tk.Button(
             button_frame,
@@ -1594,7 +1594,7 @@ class CHIMLauncher(tk.Tk):
             ("LocalWhisper", "2-4GB VRAM"),
             ("MeloTTS", "Less than 1GB VRAM"),
             ("Mimic3", "Less than 1GB VRAM"),
-            ("Minime-T5", "Less than 1GB VRAM")
+            ("Minime & TXT2VEC", "Less than 1GB VRAM")
         ]
         
         for component, vram in gpu_data:
@@ -2321,7 +2321,7 @@ class CHIMLauncher(tk.Tk):
             self.append_output("Starting full system update...\n")
             
             # Run everything in a single command
-            self.append_output("\nSTEP 1: Updating CHIM distro...\n", "green")
+            self.append_output("\nSTEP 1: Core System Update\n", "green")
             self.append_output("Running update script...\n")
             
             # Prepare the combined update command
@@ -2359,7 +2359,7 @@ class CHIMLauncher(tk.Tk):
                 if "=====MARKER:BEGIN_SERVER_UPDATE=====" in line:
                     distro_update_complete = True
                     server_update_started = True
-                    self.append_output("\nSTEP 2: Updating CHIM server...\n", "green")
+                    self.append_output("\nSTEP 2: CHIM Server & Components Update\n", "green")
                     continue  # Skip the marker line itself
                 
                 # Output the line
