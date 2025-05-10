@@ -477,7 +477,7 @@ class CHIMLauncher(tk.Tk):
         self.add_hover_effects(self.force_stop_button, standard_button_bg, standard_button_hover_bg)
 
         # --- Server Updates Group --- 
-        server_updates_frame = tk.LabelFrame(left_frame, text="Update Controls", **labelframe_style)
+        server_updates_frame = tk.LabelFrame(left_frame, text="Updater", **labelframe_style)
         server_updates_frame.pack(pady=10, padx=5, fill=tk.X)
 
         # Replace separate update buttons with a single Update button
@@ -1367,7 +1367,7 @@ class CHIMLauncher(tk.Tk):
         # Create a new Toplevel window
         submenu_window = tk.Toplevel(self)
         submenu_window.title("Install Components")
-        submenu_window.geometry("500x860")  
+        submenu_window.geometry("500x725")  
         submenu_window.configure(bg="#2C2C2C")
         submenu_window.resizable(False, False)
         # Set the window icon to CHIM.png
@@ -1439,7 +1439,7 @@ class CHIMLauncher(tk.Tk):
             font=("Trebuchet MS", 10),
             wraplength=460, # Wrap text within the frame width
             justify="left",
-            height=4 # Allocate space for ~3 lines + padding
+            height=6 # Increased from 4 to 6 to accommodate longer descriptions
         )
         desc_label.pack(fill=tk.X, pady=5)
 
@@ -1450,11 +1450,11 @@ class CHIMLauncher(tk.Tk):
         # --- Descriptions Dictionary ---
         component_descriptions = {
             "CUDA": "Nvidia's special software that lets AI tools work with their graphics cards, without it programs like CHIM XTTS won't work. Install this first if you have a Nvidia GPU.",
-            "CHIM XTTS": "A High-quality and realistic Text-to-Speech (TTS) service. Requires an Nvidia GPU with sufficient VRAM (4GB+) and CUDA installed. Provides immersive NPC voices with the ability to generate new ones automatically ingame.",
-            "MeloTTS": "A fast, and efficient Text-to-Speech (TTS) service ideal for low-end systems. Runs efficiently on CPU, making it a great option for systems without Nvidia GPUs or for lower resource usage.",
-            "Minime-T5": "A tiny helper Large Language Model (LLM). Used by CHIM to improve AI NPC responses. Also comes with TXT2VEC, an efficent vector service. Runs on GPU or CPU using only 400MB of memory.",
-            "Mimic3": "An older but fast Text-to-Speech (TTS) service. Does not come with Skyrim voices.",
-            "LocalWhisper": "Offline Speech-to-Text (STT) service based on OpenAI's Whisper. Allows you to use your microphone to chat with NPCs."
+            "CHIM XTTS": "A High-quality and realistic Text-to-Speech (TTS) service. Requires an Nvidia GPU with sufficient VRAM (4GB+) and CUDA installed. Provides immersive NPC voices with the ability to generate new ones automatically ingame.\n\nVRAM Usage: 4GB",
+            "MeloTTS": "A fast, and efficient Text-to-Speech (TTS) service ideal for low-end systems. Runs efficiently on CPU, making it a great option for systems without Nvidia GPUs or for lower resource usage.\n\nVRAM Usage: Under 1GB",
+            "Minime-T5": "A tiny helper Large Language Model (LLM). Used by CHIM to improve AI NPC responses. Also comes with TXT2VEC, an efficent vector service. Runs on GPU or CPU efficently.\n\nVRAM Usage: 400MB",
+            "Mimic3": "An older but fast Text-to-Speech (TTS) service. Does not come with Skyrim voices.\n\nVRAM Usage: Less than 1GB",
+            "LocalWhisper": "Offline Speech-to-Text (STT) service based on OpenAI's Whisper. Allows you to use your microphone to chat with NPCs.\n\nVRAM Usage: 1-2GB"
         }
 
         # --- Hover Handler for Install Buttons ---
@@ -1606,13 +1606,13 @@ class CHIMLauncher(tk.Tk):
         
         # Minime & TXT2VEC - NVIDIA and AMD
         minime_button = create_component_button(
-            button_frame, "🧠Minime&TXT2VEC", self.install_minime_t5, "Minime-T5", 
+            button_frame,"🧠Minime&TXT2VEC", self.install_minime_t5, "Minime-T5", 
             show_nvidia=True, show_amd=True
         )
         
         # CHIM XTTS - Only NVIDIA
         xtts_button = create_component_button(
-            button_frame, "    🗣 CHIM XTTS", self.install_xtts, "CHIM XTTS", 
+            button_frame, "     🗣CHIM XTTS", self.install_xtts, "CHIM XTTS", 
             show_nvidia=True, show_amd=False
         )
         
@@ -1696,63 +1696,6 @@ class CHIMLauncher(tk.Tk):
             anchor="w"
         )
         amd_label.pack(pady=(0, 10), padx=0, fill="x")
-
-        # GPU Usage Section
-        gpu_header = tk.Label(
-            readme_frame,
-            text="GPU Usage",
-            bg="#2C2C2C",
-            fg="white",
-            font=("Trebuchet MS", 12, "bold"),
-            anchor="w"
-        )
-        gpu_header.pack(pady=(10, 5), padx=0, fill="x")
-
-        # Create a Treeview widget for the GPU Usage table
-        columns = ("Component", "VRAM Usage")
-        gpu_tree = ttk.Treeview(readme_frame, columns=columns, show='headings', height=5)
-        
-        # Define headings
-        gpu_tree.heading("Component", text="Component")
-        gpu_tree.heading("VRAM Usage", text="VRAM Usage")
-        
-        # Define column widths
-        gpu_tree.column("Component", anchor="w", width=150)
-        gpu_tree.column("VRAM Usage", anchor="w", width=150)
-        
-        # Insert data
-        gpu_data = [
-            ("CHIM XTTS", "4GB VRAM"),
-            ("LocalWhisper", "2-4GB VRAM"),
-            ("MeloTTS", "Less than 1GB VRAM"),
-            ("Mimic3", "Less than 1GB VRAM"),
-            ("Minime & TXT2VEC", "Less than 1GB VRAM")
-        ]
-        
-        for component, vram in gpu_data:
-            gpu_tree.insert("", "end", values=(component, vram))
-        
-        # Style the Treeview
-        style = ttk.Style()
-        style.theme_use("default")
-        style.configure("Treeview",
-                        background="#2C2C2C",
-                        foreground="white",
-                        fieldbackground="#2C2C2C",
-                        font=("Trebuchet MS", 10))
-        style.configure("Treeview.Heading",
-                        background="#5E0505",  # Deep red
-                        foreground="white",
-                        font=("Trebuchet MS", 10, "bold"))
-        # Remove hover effect by setting active color same as normal
-        style.map("Treeview",
-                background=[('selected', '#2C2C2C')],
-                foreground=[('selected', 'white')])
-        style.map("Treeview.Heading",
-                background=[('active', "#5E0505")],  # Same as normal state
-                foreground=[('active', "white")])
-        
-        gpu_tree.pack(pady=(0, 10), padx=0, fill="x")
 
     def run_command_in_new_window(self, cmd):
         try:
