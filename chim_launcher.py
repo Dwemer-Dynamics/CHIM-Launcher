@@ -62,7 +62,7 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
                 url=target_url,
                 headers=req_headers,
                 data=req_body, 
-                timeout=10,
+                timeout=30,
                 stream=True
             )
 
@@ -173,6 +173,7 @@ class CHIMLauncher(tk.Tk):
         self.proxy_server = None
         self.proxy_thread = None
         self.proxy_port = 7513 # Port the launcher will listen on
+        self.proxy_timeout = 30 # Timeout in seconds for proxy requests
         # self.proxy_status = "neutral" # Removed proxy status tracking
 
         # Add flag for connection status logging - REMOVED
@@ -213,7 +214,7 @@ class CHIMLauncher(tk.Tk):
             self.proxy_server = ProxiedTCPServer(("127.0.0.1", self.proxy_port), ProxyHandler, self)
             self.proxy_thread = threading.Thread(target=self.proxy_server.serve_forever, daemon=True)
             self.proxy_thread.start()
-            self.append_output(f"CHIM Proxy listening on 127.0.0.1:{self.proxy_port}\n")
+            self.append_output(f"CHIM Proxy listening on 127.0.0.1:{self.proxy_port} (Timeout: {self.proxy_timeout}s)\n")
             
             # Attempt to get WSL IP immediately after starting proxy
             threading.Thread(target=self.get_wsl_ip, daemon=True).start()
