@@ -62,7 +62,7 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
                 url=target_url,
                 headers=req_headers,
                 data=req_body, 
-                timeout=30,
+                timeout=60,
                 stream=True
             )
 
@@ -173,7 +173,7 @@ class CHIMLauncher(tk.Tk):
         self.proxy_server = None
         self.proxy_thread = None
         self.proxy_port = 7513 # Port the launcher will listen on
-        self.proxy_timeout = 30 # Timeout in seconds for proxy requests
+        self.proxy_timeout = 60 # Timeout in seconds for proxy requests
         # self.proxy_status = "neutral" # Removed proxy status tracking
 
         # Add flag for connection status logging - REMOVED
