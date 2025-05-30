@@ -75,7 +75,8 @@ class SimpleTCPProxy(threading.Thread):
                         break
                     client_sock.sendall(data)
         except Exception as e:
-            self.launcher.append_output(f"Proxy relay error: {e}\n", "red")
+            # self.launcher.append_output(f"Proxy relay error: {e}\n", "red")
+            pass
         finally:
             client_sock.close()
             server_sock.close()
