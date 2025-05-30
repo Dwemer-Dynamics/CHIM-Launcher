@@ -16,119 +16,78 @@ import urllib.parse
 import io # Added for reading request body
 import tkinter.filedialog # Added for save dialog
 
-# --- HTTP Proxy Classes ---
-class ProxyHandler(http.server.BaseHTTPRequestHandler):
-    def _forward_request(self):
-        launcher = self.server.launcher
-        # Make sure to update UI from the main thread - REMOVED update_ui_callback lambda
-        # update_ui_callback = lambda status, latency_ms=None: launcher.after(0, launcher.update_proxy_status_ui, status, latency_ms)
-        
-        target_ip = launcher.get_wsl_ip()
+import socket
+import threading
+import select
+import sys
 
-        if not target_ip:
-            # Log failure only if connection was previously reported as ok AND server was ready
-            if launcher.wsl_connection_reported and launcher.wsl_server_ready:
-                 launcher.after(0, launcher.append_output, "WSL Connection to Skyrim Lost!\n", "red")
-            # launcher.wsl_connection_reported = False # REMOVE: Don't reset on error
-            self.send_error(503, "WSL Service Unavailable (Could not get IP)")
-            # launcher.append_output("Proxy Error: Could not get WSL IP to forward request.\n") # Hidden log
-            # update_ui_callback("error", None) # Removed UI update
+class SimpleTCPProxy(threading.Thread):
+    def __init__(self, listen_addr, target_addr_func, launcher_instance):
+        super().__init__(daemon=True)
+        self.listen_addr = listen_addr  # e.g., ('127.0.0.1', 7513)
+        self.target_addr_func = target_addr_func  # function that returns ('wsl_ip', 8081)
+        self.launcher = launcher_instance
+        self.should_stop = threading.Event()
+
+    def run(self):
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s.bind(self.listen_addr)
+        s.listen(16)
+        self.launcher.append_output(f"TCP Proxy listening on {self.listen_addr[0]}:{self.listen_addr[1]}\n")
+        while not self.should_stop.is_set():
+            try:
+                client_sock, addr = s.accept()
+                threading.Thread(target=self.handle_client, args=(client_sock,), daemon=True).start()
+            except:
+                break  # If socket is closed, exit
+        s.close()
+        self.launcher.append_output("TCP Proxy stopped.\n")
+
+    def handle_client(self, client_sock):
+        try:
+            target_ip, target_port = self.target_addr_func()
+            if not target_ip:
+                client_sock.close()
+                self.launcher.append_output("Proxy: Could not get WSL IP.\n", "red")
+                return
+            # Connect to target
+            server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            server_sock.connect((target_ip, target_port))
+        except Exception as e:
+            self.launcher.append_output(f"Proxy: Error connecting to target: {e}\n", "red")
+            client_sock.close()
             return
 
-        target_port = 8081 # Port inside WSL
-        target_url = f"http://{target_ip}:{target_port}{self.path}"
-        # launcher.append_output(f"Proxy forwarding {self.command} request to: {target_url}\n") # Hidden log
-
-        req_headers = {k: v for k, v in self.headers.items()}
-        req_body = None
-        content_length = self.headers.get('Content-Length')
-        if content_length:
-            try:
-                body_bytes = self.rfile.read(int(content_length))
-                req_body = body_bytes
-            except Exception as e:
-                # Log failure only if connection was previously reported as ok AND server was ready
-                if launcher.wsl_connection_reported and launcher.wsl_server_ready:
-                     launcher.after(0, launcher.append_output, f"WSL Connection to Skyrim Lost!\n", "red")
-                # launcher.wsl_connection_reported = False # REMOVE: Don't reset on error
-                self.send_error(400, f"Error reading request body: {e}")
-                # launcher.append_output(f"Proxy Error: Failed reading request body: {e}\n") # Hidden log
-                # update_ui_callback("error", None) # Removed UI update
-                return
-        
+        # Two-way relay, simple select loop
+        sockets = [client_sock, server_sock]
         try:
-            response = requests.request(
-                method=self.command,
-                url=target_url,
-                headers=req_headers,
-                data=req_body, 
-                timeout=60,
-                stream=True
-            )
-
-            self.send_response(response.status_code)
-            excluded_headers = ['content-encoding', 'transfer-encoding', 'connection']
-            for key, value in response.headers.items():
-                 if key.lower() not in excluded_headers:
-                    self.send_header(key, value)
-            self.end_headers()
-
-            try:
-                for chunk in response.iter_content(chunk_size=8192):
-                    if chunk:
-                        self.wfile.write(chunk)
-            except Exception as e:
-                 # launcher.append_output(f"Proxy Error: Failed writing response body: {e}\n") # Hidden log
-                 # Don't mark as connection lost here, client might have disconnected
-                 pass
-
-            # Calculate latency (though we aren't displaying it anymore, response.elapsed is still useful)
-            latency_ms = response.elapsed.total_seconds() * 1000
-            
-            # Log established connection only once AND only after server is ready
-            if not launcher.wsl_connection_reported and launcher.wsl_server_ready:
-                launcher.after(0, launcher.append_output, "WSL Connection to Skyrim Established!\n", "green")
-                launcher.wsl_connection_reported = True
-                
-            # launcher.append_output(f"Proxy forwarded request successfully ({response.status_code}).\n") # Hidden log
-            # update_ui_callback("ok", latency_ms) # Removed UI update
-            response.close()
-
-        # Add back essential exception handling, without connection status logic
-        except requests.exceptions.ConnectionError:
-            self.send_error(503, "WSL Service Unavailable (Connection Error)")
-        except requests.exceptions.Timeout:
-            self.send_error(504, "Gateway Timeout")
-        except requests.exceptions.RequestException as e:
-            self.send_error(500, f"Internal Proxy Error: {e}")
+            while True:
+                rlist, _, _ = select.select(sockets, [], [], 1)
+                if client_sock in rlist:
+                    data = client_sock.recv(4096)
+                    if not data:
+                        break
+                    server_sock.sendall(data)
+                if server_sock in rlist:
+                    data = server_sock.recv(4096)
+                    if not data:
+                        break
+                    client_sock.sendall(data)
         except Exception as e:
-            try:
-                self.send_error(500, "Internal Server Error")
-            except Exception:
-                pass
+            self.launcher.append_output(f"Proxy relay error: {e}\n", "red")
+        finally:
+            client_sock.close()
+            server_sock.close()
 
-    def do_GET(self):
-        self._forward_request()
-    def do_POST(self):
-        self._forward_request()
-    def do_PUT(self):
-        self._forward_request()
-    def do_DELETE(self):
-        self._forward_request()
-    def do_HEAD(self):
-        self._forward_request()
-    def do_OPTIONS(self):
-        self._forward_request()
+    def shutdown(self):
+        self.should_stop.set()
+        # Dummy connection to exit the accept()
+        try:
+            socket.socket(socket.AF_INET, socket.SOCK_STREAM).connect(self.listen_addr)
+        except:
+            pass
 
-    def log_message(self, format, *args):
-        return # Suppress default logging
-
-class ProxiedTCPServer(socketserver.ThreadingTCPServer):
-    allow_reuse_address = True
-    def __init__(self, server_address, RequestHandlerClass, launcher_instance):
-        super().__init__(server_address, RequestHandlerClass)
-        self.launcher = launcher_instance
-# --- End HTTP Proxy Classes ---
 
 def get_resource_path(filename):
     """Get the absolute path to a resource, works for PyInstaller."""
@@ -195,47 +154,21 @@ class CHIMLauncher(tk.Tk):
         self.start_proxy_server()
 
     def start_proxy_server(self):
-        """Starts the HTTP proxy server in a separate thread."""
         try:
-            # Note: Handler class needs to be defined before this is called - DEFINED ABOVE NOW
-            # We will use a placeholder for now and inject the real classes later - NO LONGER PLACEHOLDERS
-            # This is a limitation of applying edits sequentially - REMOVED PLACEHOLDERS
-            # class PlaceholderHandler(http.server.BaseHTTPRequestHandler): 
-            #      def handle(self): pass # Do nothing for placeholder
-            
-            # Need to define ProxiedTCPServer before use too - DEFINED ABOVE NOW
-            # class PlaceholderTCPServer(socketserver.ThreadingTCPServer):
-            #      allow_reuse_address = True
-            #      def __init__(self, server_address, RequestHandlerClass, launcher_instance):
-            #          super().__init__(server_address, RequestHandlerClass)
-            #          self.launcher = launcher_instance
-
-            # Use the actual classes now defined above
-            self.proxy_server = ProxiedTCPServer(("127.0.0.1", self.proxy_port), ProxyHandler, self)
-            self.proxy_thread = threading.Thread(target=self.proxy_server.serve_forever, daemon=True)
-            self.proxy_thread.start()
-            self.append_output(f"CHIM Proxy listening on 127.0.0.1:{self.proxy_port} (Timeout: {self.proxy_timeout}s)\n")
-            
-            # Attempt to get WSL IP immediately after starting proxy
-            threading.Thread(target=self.get_wsl_ip, daemon=True).start()
-            
-        except OSError as e:
-            if e.errno == 98 or e.errno == 10048: # Address already in use
-                 error_msg = f"Proxy Error: Port {self.proxy_port} is already in use. Is another instance running?\n"
-                 messagebox.showerror("Proxy Error", f"Port {self.proxy_port} is already in use. Cannot start proxy.\nEnsure no other CHIM Launcher or application is using this port.")
-                 self.append_output(error_msg)
-            else:
-                error_msg = f"Proxy Error: Could not start proxy server: {e}\n"
-                messagebox.showerror("Proxy Error", f"Could not start proxy server: {e}")
-                self.append_output(error_msg)
-            self.proxy_server = None
-            self.proxy_thread = None
+            def target_addr_func():
+                wsl_ip = self.get_wsl_ip(force_refresh=True)
+                return (wsl_ip, 8081) if wsl_ip else (None, None)
+            self.proxy_server = SimpleTCPProxy(('127.0.0.1', self.proxy_port), target_addr_func, self)
+            self.proxy_server.start()
         except Exception as e:
-            error_msg = f"Proxy Error: An unexpected error occurred starting proxy server: {e}\n"
-            messagebox.showerror("Proxy Error", f"An unexpected error occurred starting proxy: {e}")
-            self.append_output(error_msg)
+            self.append_output(f"Proxy Error: {e}\n", "red")
             self.proxy_server = None
-            self.proxy_thread = None
+
+    def on_close(self):
+        if hasattr(self, 'proxy_server') and self.proxy_server:
+            self.proxy_server.shutdown()
+
+
             
     def get_wsl_ip(self, force_refresh=False):
         """Get the IP address of the WSL instance. Caches the result. Only logs if IP changes."""
