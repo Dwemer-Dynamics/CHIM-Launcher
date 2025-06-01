@@ -1783,12 +1783,12 @@ class CHIMLauncher(tk.Tk):
     def clean_logs(self):
         """Opens a new window to clean log files."""
         # Create the batch file content
-        batch_content = '''@echo -------------------------------------------------------------------------------
+        batch_content = '''@echo -------------------------------------------------------------------------
 @echo This will backup and delete your log files! 
 @echo Existing log files will be renamed to log_name.bak  
 @echo Existing backups will be overwritten. 
 @echo Make sure the server is not running. 
-@echo -------------------------------------------------------------------------------
+@echo -------------------------------------------------------------------------
 
 @%SystemRoot%\\System32\\choice.exe /C YN /N /M "Are you sure you want to delete log files? [Y/N] "
 @IF NOT ErrorLevel 2 (
@@ -1820,6 +1820,14 @@ class CHIMLauncher(tk.Tk):
   IF EXIST "\\\\wsl.localhost\\DwemerAI4Skyrim3\\var\\www\\html\\HerikaServer\\log\\minai.log" (
     del "\\\\wsl.localhost\\DwemerAI4Skyrim3\\var\\www\\html\\HerikaServer\\log\\minai.bak"
     ren "\\\\wsl.localhost\\DwemerAI4Skyrim3\\var\\www\\html\\HerikaServer\\log\\minai.log" "minai.bak"
+  )
+  IF EXIST "\\\\wsl.localhost\\DwemerAI4Skyrim3\\var\\www\\html\\HerikaServer\\log\\chim.log" (
+    del "\\\\wsl.localhost\\DwemerAI4Skyrim3\\var\\www\\html\\HerikaServer\\log\\chim.bak"
+    ren "\\\\wsl.localhost\\DwemerAI4Skyrim3\\var\\www\\html\\HerikaServer\\log\\chim.log" "chim.bak"
+  )
+  IF EXIST "\\\\wsl.localhost\\DwemerAI4Skyrim3\\var\\www\\html\\HerikaServer\\log\\vision.log" (
+    del "\\\\wsl.localhost\\DwemerAI4Skyrim3\\var\\www\\html\\HerikaServer\\log\\vision.bak"
+    ren "\\\\wsl.localhost\\DwemerAI4Skyrim3\\var\\www\\html\\HerikaServer\\log\\vision.log" "vision.bak"
   )
   @echo Log files deleted. 
 ) ELSE (
