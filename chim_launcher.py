@@ -90,6 +90,95 @@ class SimpleTCPProxy(threading.Thread):
             pass
 
 
+class DiscoveryHTTPServer(threading.Thread):
+    """Simple HTTP server for auto-discovery on port 7135"""
+    def __init__(self, launcher_instance):
+        super().__init__(daemon=True)
+        self.launcher = launcher_instance
+        self.should_stop = threading.Event()
+        self.server_socket = None
+
+    def run(self):
+        try:
+            self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self.server_socket.bind(('127.0.0.1', 7135))
+            self.server_socket.listen(5)
+            self.launcher.append_output("Discovery service listening on localhost:7135\n")
+            
+            while not self.should_stop.is_set():
+                try:
+                    self.server_socket.settimeout(1.0)  # Timeout to check should_stop
+                    client_socket, addr = self.server_socket.accept()
+                    threading.Thread(target=self.handle_discovery_request, args=(client_socket,), daemon=True).start()
+                except socket.timeout:
+                    continue
+                except:
+                    break
+        except Exception as e:
+            self.launcher.append_output(f"Discovery service error: {e}\n", "red")
+        finally:
+            if self.server_socket:
+                self.server_socket.close()
+            self.launcher.append_output("Discovery service stopped.\n")
+
+    def handle_discovery_request(self, client_socket):
+        try:
+            # Read the HTTP request
+            request = client_socket.recv(1024).decode('utf-8')
+            
+            # Check if it's a GET /discover request
+            if 'GET /discover' in request:
+                # Get WSL IP
+                wsl_ip = self.launcher.get_wsl_ip(force_refresh=False)
+                if wsl_ip:
+                    response_body = f"{wsl_ip}:8081"
+                    response = (
+                        "HTTP/1.1 200 OK\r\n"
+                        "Content-Type: text/plain\r\n"
+                        f"Content-Length: {len(response_body)}\r\n"
+                        "Connection: close\r\n"
+                        "\r\n"
+                        f"{response_body}"
+                    )
+                else:
+                    response_body = "WSL IP not available"
+                    response = (
+                        "HTTP/1.1 503 Service Unavailable\r\n"
+                        "Content-Type: text/plain\r\n"
+                        f"Content-Length: {len(response_body)}\r\n"
+                        "Connection: close\r\n"
+                        "\r\n"
+                        f"{response_body}"
+                    )
+            else:
+                # Return 404 for other requests
+                response_body = "Not Found"
+                response = (
+                    "HTTP/1.1 404 Not Found\r\n"
+                    "Content-Type: text/plain\r\n"
+                    f"Content-Length: {len(response_body)}\r\n"
+                    "Connection: close\r\n"
+                    "\r\n"
+                    f"{response_body}"
+                )
+            
+            client_socket.send(response.encode('utf-8'))
+        except Exception as e:
+            # Silent fail for discovery requests
+            pass
+        finally:
+            client_socket.close()
+
+    def shutdown(self):
+        self.should_stop.set()
+        # Dummy connection to exit the accept()
+        try:
+            socket.socket(socket.AF_INET, socket.SOCK_STREAM).connect(('127.0.0.1', 7135))
+        except:
+            pass
+
+
 def get_resource_path(filename):
     """Get the absolute path to a resource, works for PyInstaller."""
     if hasattr(sys, '_MEIPASS'):
@@ -136,6 +225,9 @@ class CHIMLauncher(tk.Tk):
         self.proxy_timeout = 60 # Timeout in seconds for proxy requests
         # self.proxy_status = "neutral" # Removed proxy status tracking
 
+        # Discovery service variables
+        self.discovery_server = None
+
         # Add flag for connection status logging - REMOVED
         # self.wsl_connection_reported = False
         self.wsl_server_ready = False # Flag to track if WSL server reported ready
@@ -151,8 +243,9 @@ class CHIMLauncher(tk.Tk):
         # Start the update check in a separate thread
         threading.Thread(target=self.check_for_updates, daemon=True).start()
         
-        # Start the proxy server
+        # Start the proxy server and discovery service
         self.start_proxy_server()
+        self.start_discovery_service()
 
     def start_proxy_server(self):
         try:
@@ -165,9 +258,19 @@ class CHIMLauncher(tk.Tk):
             self.append_output(f"Proxy Error: {e}\n", "red")
             self.proxy_server = None
 
+    def start_discovery_service(self):
+        try:
+            self.discovery_server = DiscoveryHTTPServer(self)
+            self.discovery_server.start()
+        except Exception as e:
+            self.append_output(f"Discovery Service Error: {e}\n", "red")
+            self.discovery_server = None
+
     def on_close(self):
         if hasattr(self, 'proxy_server') and self.proxy_server:
             self.proxy_server.shutdown()
+        if hasattr(self, 'discovery_server') and self.discovery_server:
+            self.discovery_server.shutdown()
 
 
             
