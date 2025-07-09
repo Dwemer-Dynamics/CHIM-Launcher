@@ -9,6 +9,7 @@ import webbrowser
 import datetime
 import sys
 import os
+import tempfile  # Added for temporary files
 from PIL import Image, ImageTk
 import http.server
 import socketserver
@@ -1405,7 +1406,7 @@ class CHIMLauncher(tk.Tk):
         # Create a new Toplevel window
         submenu_window = tk.Toplevel(self)
         submenu_window.title("Install Components")
-        submenu_window.geometry("500x725")  
+        submenu_window.geometry("500x900")  
         submenu_window.configure(bg="#2C2C2C")
         submenu_window.resizable(False, False)
         # Set the window icon to CHIM.png
@@ -1492,7 +1493,9 @@ class CHIMLauncher(tk.Tk):
             "MeloTTS": "A fast, and efficient Text-to-Speech (TTS) service ideal for low-end systems. Runs efficiently on CPU, making it a great option for systems without Nvidia GPUs or for lower resource usage.\n\nVRAM Usage: Under 1GB",
             "Minime-T5": "A tiny helper Large Language Model (LLM). Used by CHIM to improve AI NPC responses. Also comes with TXT2VEC, an efficent vector service. Runs on GPU or CPU efficently.\n\nVRAM Usage: 400MB",
             "Mimic3": "An older but fast Text-to-Speech (TTS) service. Does not come with Skyrim voices.\n\nVRAM Usage: Less than 1GB",
-            "LocalWhisper": "Offline Speech-to-Text (STT) service based on OpenAI's Whisper. Allows you to use your microphone to chat with NPCs.\n\nVRAM Usage: 1-2GB"
+            "LocalWhisper": "Offline Speech-to-Text (STT) service based on OpenAI's Whisper. Allows you to use your microphone to chat with NPCs.\n\nVRAM Usage: 1-2GB",
+            "XTTS_PORT_SETUP": "Sets up Windows port forwarding and firewall rules to allow external access to XTTS API and CHIM WebUI. Requires administrator privileges.",
+            "XTTS_PORT_REMOVE": "Removes all CHIM port forwarding rules and firewall entries. Requires administrator privileges."
         }
 
         # --- Hover Handler for Install Buttons ---
@@ -1672,6 +1675,72 @@ class CHIMLauncher(tk.Tk):
             show_nvidia=True, show_amd=True
         )
 
+        # Add separator
+        separator = tk.Frame(button_frame, height=2, bg="#5E0505")
+        separator.pack(fill=tk.X, pady=10)
+
+        # --- CHIM Port Forwarding Section ---
+        port_forwarding_header = tk.Label(
+            button_frame,
+            text="CHIM Network Setup",
+            bg="#2C2C2C",
+            fg="white",
+            font=("Trebuchet MS", 12, "bold")
+        )
+        port_forwarding_header.pack(pady=(5, 10))
+
+        # Create port forwarding buttons with different styling
+        port_button_style = {
+            'bg': '#2E4D32',  # Dark green
+            'fg': 'white',
+            'activebackground': '#1B2F1E',
+            'activeforeground': 'white',
+            'font': ("Trebuchet MS", 12, "bold"),
+            'relief': 'flat',
+            'borderwidth': 0,
+            'highlightthickness': 0,
+            'cursor': 'hand2'
+        }
+
+        port_button_hover_bg = '#1B2F1E'
+        port_button_normal_bg = '#2E4D32'
+
+        # Setup port forwarding button
+        setup_port_button = tk.Button(
+            button_frame,
+            text="🌐 Setup CHIM Port Forwarding",
+            command=self.setup_xtts_port_forwarding,
+            **port_button_style
+        )
+        setup_port_button.pack(fill=tk.X, pady=5, padx=2)
+        self.add_hover_effects(setup_port_button, port_button_normal_bg, port_button_hover_bg)
+
+        # Remove port forwarding button
+        remove_port_button = tk.Button(
+            button_frame,
+            text="🚫 Remove CHIM Port Forwarding",
+            command=self.remove_xtts_port_forwarding,
+            **port_button_style
+        )
+        remove_port_button.pack(fill=tk.X, pady=5, padx=2)
+        self.add_hover_effects(remove_port_button, port_button_normal_bg, port_button_hover_bg)
+
+        # Add hover effects for port forwarding buttons
+        def port_button_hover_handler(button, normal_bg, hover_bg, component_key, description_label):
+            desc_text = component_descriptions.get(component_key, "No description available.")
+            def on_enter(e):
+                button['background'] = hover_bg
+                description_label.config(text=desc_text)
+            def on_leave(e):
+                button['background'] = normal_bg
+                description_label.config(text="Hover over a component below to see its description.")
+            button.bind('<Enter>', on_enter)
+            button.bind('<Leave>', on_leave)
+
+        # Apply hover handlers to port forwarding buttons
+        port_button_hover_handler(setup_port_button, port_button_normal_bg, port_button_hover_bg, "XTTS_PORT_SETUP", desc_label)
+        port_button_hover_handler(remove_port_button, port_button_normal_bg, port_button_hover_bg, "XTTS_PORT_REMOVE", desc_label)
+
         # README Section
         readme_frame = tk.LabelFrame(
             submenu_window,
@@ -1735,6 +1804,18 @@ class CHIMLauncher(tk.Tk):
         )
         amd_label.pack(pady=(0, 10), padx=0, fill="x")
 
+        port_label = tk.Label(
+            readme_frame,
+            text=port_text,
+            bg="#2C2C2C",
+            fg="yellow",
+            wraplength=480,
+            justify="left",
+            font=("Trebuchet MS", 10),
+            anchor="w"
+        )
+        port_label.pack(pady=(0, 10), padx=0, fill="x")
+
     def run_command_in_new_window(self, cmd):
         try:
             # Open a new command window and run the specified command
@@ -1759,6 +1840,330 @@ class CHIMLauncher(tk.Tk):
     
     def install_localwhisper(self):
         threading.Thread(target=self.run_command_in_new_window, args=('wsl -d DwemerAI4Skyrim3 -u dwemer -- /home/dwemer/remote-faster-whisper/ddistro_install.sh',), daemon=True).start()
+    
+    def get_windows_lan_ip(self):
+        """Get the Windows host's LAN IP address."""
+        try:
+            # Get the default route's interface IP
+            result = subprocess.run(['powershell', '-Command', 
+                                   '(Get-NetRoute -DestinationPrefix "0.0.0.0/0" | Get-NetIPAddress).IPAddress'], 
+                                  capture_output=True, text=True, check=True)
+            
+            # Filter out IPv6 addresses and localhost
+            ips = [ip.strip() for ip in result.stdout.strip().split('\n') if ip.strip()]
+            for ip in ips:
+                # Look for IPv4 addresses that aren't localhost
+                if '.' in ip and not ip.startswith('127.') and not ip.startswith('169.254.'):
+                    return ip
+            
+            # Fallback method using socket
+            import socket
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                s.connect(("8.8.8.8", 80))
+                return s.getsockname()[0]
+                
+        except Exception as e:
+            self.append_output(f"Error getting Windows LAN IP: {e}\n", "red")
+            return None
+
+    def setup_xtts_port_forwarding(self):
+        """Set up port forwarding for XTTS service."""
+        threading.Thread(target=self.setup_xtts_port_forwarding_thread, daemon=True).start()
+
+    def setup_xtts_port_forwarding_thread(self):
+        """Thread function to set up XTTS port forwarding."""
+        try:
+            # Get Windows LAN IP
+            windows_ip = self.get_windows_lan_ip()
+            if not windows_ip:
+                self.append_output("Could not determine Windows LAN IP address.\n", "red")
+                return
+            
+            # Get WSL IP
+            wsl_ip = self.get_wsl_ip(force_refresh=True)
+            if not wsl_ip:
+                self.append_output("Could not determine WSL IP address.\n", "red")
+                return
+            
+            # Ask user for confirmation and port configuration
+            def ask_user_config():
+                config_window = tk.Toplevel(self)
+                config_window.title("CHIM Port Forwarding Setup")
+                config_window.geometry("500x400")
+                config_window.configure(bg="#2C2C2C")
+                config_window.resizable(False, False)
+                
+                # Set icon
+                try:
+                    icon_path = get_resource_path('CHIM.png')
+                    img = Image.open(icon_path)
+                    photo = ImageTk.PhotoImage(img)
+                    config_window.iconphoto(False, photo)
+                except Exception:
+                    pass
+                
+                # Info label
+                info_text = f"This will set up port forwarding for CHIM from your Windows host to WSL.\n\n" \
+                          f"Windows Host IP: {windows_ip}\n" \
+                          f"WSL IP: {wsl_ip}\n\n" \
+                          f"Configure the ports below:"
+                
+                info_label = tk.Label(config_window, text=info_text, bg="#2C2C2C", fg="white",
+                                    font=("Trebuchet MS", 10), justify="left", wraplength=460)
+                info_label.pack(pady=20, padx=20)
+                
+                # Port configuration frame
+                port_frame = tk.Frame(config_window, bg="#2C2C2C")
+                port_frame.pack(pady=10)
+                
+                # XTTS API Port
+                tk.Label(port_frame, text="XTTS API Port (external):", bg="#2C2C2C", fg="white",
+                        font=("Trebuchet MS", 10)).grid(row=0, column=0, sticky="w", padx=5, pady=5)
+                api_port_var = tk.StringVar(value="9020")
+                api_port_entry = tk.Entry(port_frame, textvariable=api_port_var, width=10)
+                api_port_entry.grid(row=0, column=1, padx=5, pady=5)
+                
+                tk.Label(port_frame, text="→", bg="#2C2C2C", fg="white", font=("Trebuchet MS", 10)).grid(row=0, column=2, padx=5)
+                
+                tk.Label(port_frame, text="WSL XTTS Port:", bg="#2C2C2C", fg="white",
+                        font=("Trebuchet MS", 10)).grid(row=0, column=3, sticky="w", padx=5, pady=5)
+                wsl_api_port_var = tk.StringVar(value="8020")
+                wsl_api_port_entry = tk.Entry(port_frame, textvariable=wsl_api_port_var, width=10)
+                wsl_api_port_entry.grid(row=0, column=4, padx=5, pady=5)
+                
+                # CHIM WebUI Port
+                tk.Label(port_frame, text="CHIM WebUI Port (external):", bg="#2C2C2C", fg="white",
+                        font=("Trebuchet MS", 10)).grid(row=1, column=0, sticky="w", padx=5, pady=5)
+                ui_port_var = tk.StringVar(value="9021")
+                ui_port_entry = tk.Entry(port_frame, textvariable=ui_port_var, width=10)
+                ui_port_entry.grid(row=1, column=1, padx=5, pady=5)
+                
+                tk.Label(port_frame, text="→", bg="#2C2C2C", fg="white", font=("Trebuchet MS", 10)).grid(row=1, column=2, padx=5)
+                
+                tk.Label(port_frame, text="WSL CHIM Port:", bg="#2C2C2C", fg="white",
+                        font=("Trebuchet MS", 10)).grid(row=1, column=3, sticky="w", padx=5, pady=5)
+                wsl_ui_port_var = tk.StringVar(value="8081")
+                wsl_ui_port_entry = tk.Entry(port_frame, textvariable=wsl_ui_port_var, width=10)
+                wsl_ui_port_entry.grid(row=1, column=4, padx=5, pady=5)
+                
+                # Warning label
+                warning_text = "⚠️ This will modify Windows firewall and port forwarding rules.\n" \
+                             "Administrator privileges are required."
+                warning_label = tk.Label(config_window, text=warning_text, bg="#2C2C2C", fg="yellow",
+                                       font=("Trebuchet MS", 9), justify="center")
+                warning_label.pack(pady=10)
+                
+                # Button frame
+                button_frame = tk.Frame(config_window, bg="#2C2C2C")
+                button_frame.pack(pady=20)
+                
+                result = {"confirmed": False, "ports": {}}
+                
+                def confirm_setup():
+                    try:
+                        result["ports"] = {
+                            "api_external": int(api_port_var.get()),
+                            "api_wsl": int(wsl_api_port_var.get()),
+                            "ui_external": int(ui_port_var.get()),
+                            "ui_wsl": int(wsl_ui_port_var.get())
+                        }
+                        result["confirmed"] = True
+                        config_window.destroy()
+                    except ValueError:
+                        messagebox.showerror("Invalid Port", "Please enter valid port numbers.")
+                
+                def cancel_setup():
+                    config_window.destroy()
+                
+                # Buttons
+                button_style = {
+                    'bg': '#5E0505', 'fg': 'white', 'font': ("Trebuchet MS", 10, "bold"),
+                    'relief': 'flat', 'borderwidth': 0, 'highlightthickness': 0, 'cursor': 'hand2'
+                }
+                
+                confirm_btn = tk.Button(button_frame, text="Setup Port Forwarding", 
+                                      command=confirm_setup, **button_style)
+                confirm_btn.pack(side=tk.LEFT, padx=10)
+                
+                cancel_btn = tk.Button(button_frame, text="Cancel", 
+                                     command=cancel_setup, **button_style)
+                cancel_btn.pack(side=tk.LEFT, padx=10)
+                
+                # Wait for user input
+                self.wait_window(config_window)
+                return result
+            
+            # Run the configuration dialog in the main thread
+            config_result = [None]
+            self.after(0, lambda: config_result.__setitem__(0, ask_user_config()))
+            
+            # Wait for the configuration to complete
+            while config_result[0] is None:
+                threading.Event().wait(0.1)
+            
+            if not config_result[0]["confirmed"]:
+                self.append_output("Port forwarding setup cancelled.\n")
+                return
+            
+            ports = config_result[0]["ports"]
+            
+            # Create PowerShell script content
+            ps_script_content = f'''
+# CHIM Port Forwarding Setup Script
+param()
+
+Write-Host "Setting up CHIM port forwarding..."
+
+# Remove existing rules if they exist
+Write-Host "Removing existing port forwarding rules..."
+netsh interface portproxy delete v4tov4 listenaddress={windows_ip} listenport={ports['api_external']} 2>$null
+netsh interface portproxy delete v4tov4 listenaddress={windows_ip} listenport={ports['ui_external']} 2>$null
+
+# Add new port forwarding rules
+Write-Host "Adding XTTS API port forwarding: {windows_ip}:{ports['api_external']} -> {wsl_ip}:{ports['api_wsl']}"
+netsh interface portproxy add v4tov4 listenaddress={windows_ip} listenport={ports['api_external']} connectaddress={wsl_ip} connectport={ports['api_wsl']}
+
+Write-Host "Adding CHIM WebUI port forwarding: {windows_ip}:{ports['ui_external']} -> {wsl_ip}:{ports['ui_wsl']}"
+netsh interface portproxy add v4tov4 listenaddress={windows_ip} listenport={ports['ui_external']} connectaddress={wsl_ip} connectport={ports['ui_wsl']}
+
+# Add firewall rules
+Write-Host "Creating firewall rules..."
+Remove-NetFirewallRule -DisplayName "CHIM-XTTS-API" -ErrorAction SilentlyContinue
+Remove-NetFirewallRule -DisplayName "CHIM-WebUI" -ErrorAction SilentlyContinue
+
+New-NetFirewallRule -DisplayName "CHIM-XTTS-API" -Direction Inbound -LocalPort {ports['api_external']} -Protocol TCP -Action Allow -Profile Any
+New-NetFirewallRule -DisplayName "CHIM-WebUI" -Direction Inbound -LocalPort {ports['ui_external']} -Protocol TCP -Action Allow -Profile Any
+
+Write-Host "Port forwarding setup complete!"
+Write-Host ""
+Write-Host "XTTS API will be available at: http://{windows_ip}:{ports['api_external']}"
+Write-Host "CHIM WebUI will be available at: http://{windows_ip}:{ports['ui_external']}"
+Write-Host ""
+Write-Host "Press any key to continue..."
+$null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+'''
+            
+            # Create temporary PowerShell script
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.ps1', delete=False) as f:
+                f.write(ps_script_content)
+                temp_script_path = f.name
+            
+            try:
+                # Execute PowerShell script with admin privileges
+                self.append_output("Setting up CHIM port forwarding...\n")
+                self.append_output(f"Windows IP: {windows_ip}\n")
+                self.append_output(f"WSL IP: {wsl_ip}\n")
+                self.append_output(f"API Port: {ports['api_external']} -> {ports['api_wsl']}\n")
+                self.append_output(f"WebUI Port: {ports['ui_external']} -> {ports['ui_wsl']}\n")
+                
+                # Run PowerShell script with admin privileges
+                cmd = [
+                    'powershell', '-Command', 
+                    f'Start-Process -FilePath "powershell.exe" -ArgumentList @("-ExecutionPolicy", "Bypass", "-File", "{temp_script_path}") -Verb RunAs -Wait'
+                ]
+                
+                result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+                
+                if result.returncode == 0:
+                    self.append_output("CHIM port forwarding setup completed successfully!\n", "green")
+                    self.append_output(f"XTTS API available at: http://{windows_ip}:{ports['api_external']}\n", "green")
+                    self.append_output(f"CHIM WebUI available at: http://{windows_ip}:{ports['ui_external']}\n", "green")
+                else:
+                    self.append_output(f"Port forwarding setup may have failed. Return code: {result.returncode}\n", "red")
+                    if result.stderr:
+                        self.append_output(f"Error: {result.stderr}\n", "red")
+                
+            finally:
+                # Clean up temporary script
+                try:
+                    os.unlink(temp_script_path)
+                except Exception:
+                    pass
+                    
+        except Exception as e:
+            self.append_output(f"Error setting up port forwarding: {e}\n", "red")
+            import traceback
+            self.append_output(f"Traceback: {traceback.format_exc()}\n", "red")
+    
+    def remove_xtts_port_forwarding(self):
+        """Remove XTTS port forwarding rules."""
+        threading.Thread(target=self.remove_xtts_port_forwarding_thread, daemon=True).start()
+
+    def remove_xtts_port_forwarding_thread(self):
+        """Thread function to remove XTTS port forwarding."""
+        try:
+            # Get Windows LAN IP
+            windows_ip = self.get_windows_lan_ip()
+            if not windows_ip:
+                self.append_output("Could not determine Windows LAN IP address.\n", "red")
+                return
+            
+            # Confirm removal
+            confirm = messagebox.askyesno("Remove Port Forwarding", 
+                                        "Remove all CHIM port forwarding rules and firewall entries?")
+            if not confirm:
+                self.append_output("Port forwarding removal cancelled.\n")
+                return
+            
+            # Create PowerShell script to remove rules
+            ps_script_content = f'''
+# Remove CHIM Port Forwarding Rules
+Write-Host "Removing CHIM port forwarding rules..."
+
+# Remove all port forwarding rules for this IP
+$rules = netsh interface portproxy show v4tov4 | Select-String "{windows_ip}"
+if ($rules) {{
+    $rules | ForEach-Object {{
+        $parts = $_ -split "\\s+"
+        $listenPort = $parts[1]
+        Write-Host "Removing port forwarding rule for port $listenPort"
+        netsh interface portproxy delete v4tov4 listenaddress={windows_ip} listenport=$listenPort
+    }}
+}}
+
+# Remove firewall rules
+Write-Host "Removing firewall rules..."
+Remove-NetFirewallRule -DisplayName "CHIM-XTTS-API" -ErrorAction SilentlyContinue
+Remove-NetFirewallRule -DisplayName "CHIM-WebUI" -ErrorAction SilentlyContinue
+
+Write-Host "CHIM port forwarding rules removed!"
+Write-Host ""
+Write-Host "Press any key to continue..."
+$null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+'''
+            
+            # Create temporary PowerShell script
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.ps1', delete=False) as f:
+                f.write(ps_script_content)
+                temp_script_path = f.name
+            
+            try:
+                # Execute PowerShell script with admin privileges
+                self.append_output("Removing CHIM port forwarding rules...\n")
+                
+                cmd = [
+                    'powershell', '-Command', 
+                    f'Start-Process -FilePath "powershell.exe" -ArgumentList @("-ExecutionPolicy", "Bypass", "-File", "{temp_script_path}") -Verb RunAs -Wait'
+                ]
+                
+                result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+                
+                if result.returncode == 0:
+                    self.append_output("CHIM port forwarding rules removed successfully!\n", "green")
+                else:
+                    self.append_output(f"Port forwarding removal may have failed. Return code: {result.returncode}\n", "red")
+                    if result.stderr:
+                        self.append_output(f"Error: {result.stderr}\n", "red")
+                
+            finally:
+                # Clean up temporary script
+                try:
+                    os.unlink(temp_script_path)
+                except Exception:
+                    pass
+                    
+        except Exception as e:
+            self.append_output(f"Error removing port forwarding: {e}\n", "red")
     
     def open_debugging_menu(self):
         # Create a new Toplevel window
