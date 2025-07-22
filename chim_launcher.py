@@ -1405,7 +1405,7 @@ class CHIMLauncher(tk.Tk):
         # Create a new Toplevel window
         submenu_window = tk.Toplevel(self)
         submenu_window.title("Install Components")
-        submenu_window.geometry("500x725")  
+        submenu_window.geometry("500x800")  
         submenu_window.configure(bg="#2C2C2C")
         submenu_window.resizable(False, False)
         # Set the window icon to CHIM.png
@@ -1492,6 +1492,7 @@ class CHIMLauncher(tk.Tk):
             "MeloTTS": "A fast, and efficient Text-to-Speech (TTS) service ideal for low-end systems. Runs efficiently on CPU, making it a great option for systems without Nvidia GPUs or for lower resource usage.\n\nVRAM Usage: Under 1GB",
             "Minime-T5": "A tiny helper Large Language Model (LLM). Used by CHIM to improve AI NPC responses. Also comes with TXT2VEC, an efficent vector service. Runs on GPU or CPU efficently.\n\nVRAM Usage: 400MB",
             "Mimic3": "An older but fast Text-to-Speech (TTS) service. Does not come with Skyrim voices.\n\nVRAM Usage: Less than 1GB",
+            "Piper-TTS": "A fast and efficient Text-to-Speech (TTS) service ideal for low-end systems. Runs fast on CPU, making it a great option for systems without Nvidia GPUs or for lower resource usage.",
             "LocalWhisper": "Offline Speech-to-Text (STT) service based on OpenAI's Whisper. Allows you to use your microphone to chat with NPCs.\n\nVRAM Usage: 1-2GB"
         }
 
@@ -1665,6 +1666,12 @@ class CHIMLauncher(tk.Tk):
             button_frame, "🗣Mimic3", self.install_mimic3, "Mimic3", 
             show_nvidia=True, show_amd=True
         )
+
+        # Piper - NVIDIA and AMD
+        pipertts_button = create_component_button(
+            button_frame, "🗣Piper-TTS", self.install_pipertts, "Piper-TTS", 
+            show_nvidia=True, show_amd=True
+        )
         
         # LocalWhisper - NVIDIA and AMD
         localwhisper_button = create_component_button(
@@ -1720,7 +1727,7 @@ class CHIMLauncher(tk.Tk):
         amd_header.pack(pady=(10, 0), padx=0, fill="x")
 
         amd_text = (
-            "You can only install MeloTTS, Mimic3, LocalWhisper and Minime-T5 in CPU mode only! "
+            "You can only install MeloTTS, Mimic3, Piper-TTS, LocalWhisper and Minime-T5 in CPU mode only! "
             "This is because AMD cards do not support CUDA. They will run a bit slower."
         )
         amd_label = tk.Label(
@@ -1756,10 +1763,13 @@ class CHIMLauncher(tk.Tk):
 
     def install_mimic3(self):
         threading.Thread(target=self.run_command_in_new_window, args=('wsl -d DwemerAI4Skyrim3 -u dwemer -- /home/dwemer/mimic3/ddistro_install.sh',), daemon=True).start()
+
+    def install_pipertts(self):
+        threading.Thread(target=self.run_command_in_new_window, args=('wsl -d DwemerAI4Skyrim3 -u dwemer -- /home/dwemer/piper/ddistro_install.sh',), daemon=True).start()
     
     def install_localwhisper(self):
         threading.Thread(target=self.run_command_in_new_window, args=('wsl -d DwemerAI4Skyrim3 -u dwemer -- /home/dwemer/remote-faster-whisper/ddistro_install.sh',), daemon=True).start()
-    
+ 
     def open_debugging_menu(self):
         # Create a new Toplevel window
         debug_window = tk.Toplevel(self)
@@ -2235,6 +2245,7 @@ class CHIMLauncher(tk.Tk):
             "/home/dwemer/minime-t5/log.txt",
             "/home/dwemer/remote-faster-whisper/log.txt",
             "/home/dwemer/MeloTTS/melo/log.txt", # Corrected path
+            "/home/dwemer/piper/log.txt",
             "/home/dwemer/mimic3/log.txt"
         ]
         
