@@ -1774,7 +1774,7 @@ class CHIMLauncher(tk.Tk):
         # Create a new Toplevel window
         debug_window = tk.Toplevel(self)
         debug_window.title("Debugging")
-        debug_window.geometry("440x600")  # Increased height
+        debug_window.geometry("440x620")  # Increased height
         debug_window.configure(bg="#2C2C2C")
         debug_window.resizable(False, False)
 
@@ -1849,6 +1849,7 @@ class CHIMLauncher(tk.Tk):
         log_view_commands = [
             ("View CHIM XTTS Logs", self.view_xtts_logs),
             ("View MeloTTS Logs", self.view_melotts_logs),
+            ("View Piper Logs", self.view_piper_logs),
             ("View LocalWhisper Logs", self.view_localwhisper_logs),
             ("View Apache Logs", self.view_apacheerror_logs),
         ]
@@ -1886,6 +1887,11 @@ class CHIMLauncher(tk.Tk):
     def view_localwhisper_logs(self):
         """Opens a new terminal window to view the LocalWhisper logs."""
         cmd = 'wsl -d DwemerAI4Skyrim3 -u dwemer -- tail -n 100 -f /home/dwemer/remote-faster-whisper/log.txt'
+        threading.Thread(target=self.run_command_in_new_window, args=(cmd,), daemon=True).start()
+    
+    def view_piper_logs(self):
+        """Opens a new terminal window to view the Piper logs."""
+        cmd = 'wsl -d DwemerAI4Skyrim3 -u dwemer -- tail -n 100 -f /home/dwemer/piper/log.txt'
         threading.Thread(target=self.run_command_in_new_window, args=(cmd,), daemon=True).start()
         
     def view_apacheerror_logs(self):
