@@ -1492,7 +1492,7 @@ class CHIMLauncher(tk.Tk):
             "MeloTTS": "A fast, and efficient Text-to-Speech (TTS) service ideal for low-end systems. Runs efficiently on CPU, making it a great option for systems without Nvidia GPUs or for lower resource usage.\n\nVRAM Usage: Under 1GB",
             "Minime-T5": "A tiny helper Large Language Model (LLM). Used by CHIM to improve AI NPC responses. Also comes with TXT2VEC, an efficent vector service. Runs on GPU or CPU efficently.\n\nVRAM Usage: 400MB",
             "Mimic3": "An older but fast Text-to-Speech (TTS) service. Does not come with Skyrim voices.\n\nVRAM Usage: Less than 1GB",
-            "Piper-TTS": "A fast and efficient Text-to-Speech (TTS) service ideal for low-end systems. Runs fast on CPU, making it a great option for systems without Nvidia GPUs or for lower resource usage.",
+            "Piper-TTS": "A fast and efficient Text-to-Speech (TTS) service ideal for low-end systems. A bit better than MeloTTS. Requires a large download (7GB+) for voices however. Runs fast on CPU, making it a great option for systems without Nvidia GPUs or for lower resource usage.",
             "LocalWhisper": "Offline Speech-to-Text (STT) service based on OpenAI's Whisper. Allows you to use your microphone to chat with NPCs.\n\nVRAM Usage: 1-2GB"
         }
 
@@ -1660,19 +1660,18 @@ class CHIMLauncher(tk.Tk):
             button_frame, "🗣MeloTTS", self.install_melotts, "MeloTTS", 
             show_nvidia=True, show_amd=True
         )
-        
+                # Piper - NVIDIA and AMD
+        pipertts_button = create_component_button(
+            button_frame, "🗣Piper-TTS", self.install_pipertts, "Piper-TTS", 
+            show_nvidia=True, show_amd=True
+        )
+
         # Mimic3 - NVIDIA and AMD
         mimic3_button = create_component_button(
             button_frame, "🗣Mimic3", self.install_mimic3, "Mimic3", 
             show_nvidia=True, show_amd=True
         )
 
-        # Piper - NVIDIA and AMD
-        pipertts_button = create_component_button(
-            button_frame, "🗣Piper-TTS", self.install_pipertts, "Piper-TTS", 
-            show_nvidia=True, show_amd=True
-        )
-        
         # LocalWhisper - NVIDIA and AMD
         localwhisper_button = create_component_button(
             button_frame, "🎙LocalWhisper", self.install_localwhisper, "LocalWhisper", 
