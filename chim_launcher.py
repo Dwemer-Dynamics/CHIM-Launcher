@@ -1401,11 +1401,19 @@ class CHIMLauncher(tk.Tk):
         folder_path = r'\\wsl.localhost\DwemerAI4Skyrim3\var\www\html\HerikaServer'
         subprocess.Popen(['explorer', folder_path])
 
+    def open_piper_voices_folder(self):
+        threading.Thread(target=self.open_piper_voices_folder_thread, daemon=True).start()
+
+    def open_piper_voices_folder_thread(self):
+        # Run the command to open the Piper voices folder
+        folder_path = r'\\wsl.localhost\DwemerAI4Skyrim3\home\dwemer\piper\voices'
+        subprocess.Popen(['explorer', folder_path])
+
     def open_install_components_menu(self):
         # Create a new Toplevel window
         submenu_window = tk.Toplevel(self)
         submenu_window.title("Install Components")
-        submenu_window.geometry("500x800")  
+        submenu_window.geometry("500x840")  
         submenu_window.configure(bg="#2C2C2C")
         submenu_window.resizable(False, False)
         # Set the window icon to CHIM.png
@@ -1491,8 +1499,8 @@ class CHIMLauncher(tk.Tk):
             "CHIM XTTS": "A High-quality and realistic Text-to-Speech (TTS) service. Requires an Nvidia GPU with sufficient VRAM (4GB+) and CUDA installed. Provides immersive NPC voices with the ability to generate new ones automatically ingame.\n\nVRAM Usage: 4GB",
             "MeloTTS": "A fast, and efficient Text-to-Speech (TTS) service ideal for low-end systems. Runs efficiently on CPU, making it a great option for systems without Nvidia GPUs or for lower resource usage.\n\nVRAM Usage: Under 1GB",
             "Minime-T5": "A tiny helper Large Language Model (LLM). Used by CHIM to improve AI NPC responses. Also comes with TXT2VEC, an efficent vector service. Runs on GPU or CPU efficently.\n\nVRAM Usage: 400MB",
-            "Mimic3": "An older but fast Text-to-Speech (TTS) service. Does not come with Skyrim voices.\n\nVRAM Usage: Less than 1GB",
-            "Piper-TTS": "A fast and efficient Text-to-Speech (TTS) service ideal for low-end systems. A bit better than MeloTTS but requires a large download (7GB+) for voices however. Runs fast on CPU, making it a great option for systems without Nvidia GPUs or for lower resource usage. \n\nVRAM Usage: Under 1GB",
+            "Mimic3": "An older but fast Text-to-Speech (TTS) service. Does not come with Skyrim voices.\n\nVRAM Usage: Under Less than 1GB",
+            "Piper-TTS": "MUST INSTALL VOICES SEPARATELY. A fast and efficient Text-to-Speech (TTS) service ideal for low-end systems. Runs fast on CPU, making it a great option for systems without Nvidia GPUs or for lower resource usage. \n\nVRAM Usage: Under 1GB",
             "LocalWhisper": "Offline Speech-to-Text (STT) service based on OpenAI's Whisper. Allows you to use your microphone to chat with NPCs.\n\nVRAM Usage: 1-2GB"
         }
 
@@ -1665,6 +1673,25 @@ class CHIMLauncher(tk.Tk):
             button_frame, "🗣Piper-TTS", self.install_pipertts, "Piper-TTS", 
             show_nvidia=True, show_amd=True
         )
+        
+        # Piper Voice Folder button
+        piper_voices_button = tk.Button(
+            button_frame,
+            text="📁 Piper Voice Folder",
+            command=self.open_piper_voices_folder,
+            bg="#404040",  # Darker gray for secondary button
+            fg="white",
+            activebackground="#505050",
+            activeforeground="white",
+            font=("Trebuchet MS", 10, "bold"),
+            relief='flat',
+            borderwidth=0,
+            highlightthickness=0,
+            cursor='hand2',
+            width=25
+        )
+        piper_voices_button.pack(pady=(2, 5), fill=tk.X, padx=20)  # Smaller top padding, indented
+        self.add_hover_effects(piper_voices_button, "#404040", "#505050")
 
         # Mimic3 - NVIDIA and AMD
         mimic3_button = create_component_button(
