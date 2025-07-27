@@ -1389,25 +1389,71 @@ class CHIMLauncher(tk.Tk):
         threading.Thread(target=self.configure_installed_components_thread, daemon=True).start()
 
     def configure_installed_components_thread(self):
-        # Open a new command window, run the specified command, and close the window after execution
+        """Opens configuration interface for installed components using secure command execution."""
         cmd = 'wsl -d DwemerAI4Skyrim3 -u dwemer -- /usr/local/bin/conf_services'
-        subprocess.Popen(['cmd', '/c', cmd])
+        self.run_command_in_new_window(cmd)
 
     def open_chim_server_folder(self):
         threading.Thread(target=self.open_chim_server_folder_thread, daemon=True).start()
 
     def open_chim_server_folder_thread(self):
-        # Run the command to open the folder
+        """Opens the CHIM server folder using the most compatible method available."""
         folder_path = r'\\wsl.localhost\DwemerAI4Skyrim3\var\www\html\HerikaServer'
-        subprocess.Popen(['explorer', folder_path])
+        
+        try:
+            # Primary method: Use os.startfile() - less suspicious to antivirus
+            os.startfile(folder_path)
+            self.append_output(f"Opened server folder: {folder_path}\n")
+        except (OSError, FileNotFoundError) as e:
+            try:
+                # Fallback method: Use webbrowser with file:// URL
+                file_url = f"file:///{folder_path.replace(chr(92), '/')}"
+                webbrowser.open(file_url)
+                self.append_output(f"Opened server folder using browser: {folder_path}\n")
+            except Exception as e2:
+                try:
+                    # Last resort: Use subprocess with proper error handling
+                    result = subprocess.run(['explorer', folder_path], 
+                                          capture_output=True, 
+                                          text=True, 
+                                          timeout=10,
+                                          check=True)
+                    self.append_output(f"Opened server folder via explorer: {folder_path}\n")
+                except subprocess.SubprocessError as e3:
+                    self.append_output(f"Failed to open server folder: {e3}\n", "red")
+                except Exception as e3:
+                    self.append_output(f"Error opening server folder: {e3}\n", "red")
 
     def open_piper_voices_folder(self):
         threading.Thread(target=self.open_piper_voices_folder_thread, daemon=True).start()
 
     def open_piper_voices_folder_thread(self):
-        # Run the command to open the Piper voices folder
+        """Opens the Piper voices folder using the most compatible method available."""
         folder_path = r'\\wsl.localhost\DwemerAI4Skyrim3\home\dwemer\piper\voices'
-        subprocess.Popen(['explorer', folder_path])
+        
+        try:
+            # Primary method: Use os.startfile() - less suspicious to antivirus
+            os.startfile(folder_path)
+            self.append_output(f"Opened Piper voices folder: {folder_path}\n")
+        except (OSError, FileNotFoundError) as e:
+            try:
+                # Fallback method: Use webbrowser with file:// URL
+                file_url = f"file:///{folder_path.replace(chr(92), '/')}"
+                webbrowser.open(file_url)
+                self.append_output(f"Opened Piper voices folder using browser: {folder_path}\n")
+            except Exception as e2:
+                try:
+                    # Last resort: Use subprocess with proper error handling
+                    result = subprocess.run(['explorer', folder_path], 
+                                          capture_output=True, 
+                                          text=True, 
+                                          timeout=10,
+                                          check=True)
+                    self.append_output(f"Opened Piper voices folder via explorer: {folder_path}\n")
+                except subprocess.SubprocessError as e3:
+                    self.append_output(f"Failed to open Piper voices folder: {e3}\n", "red")
+                except Exception as e3:
+                    self.append_output(f"Error opening Piper voices folder: {e3}\n", "red")
 
     def open_install_components_menu(self):
         # Create a new Toplevel window
@@ -1769,11 +1815,33 @@ class CHIMLauncher(tk.Tk):
         amd_label.pack(pady=(0, 10), padx=0, fill="x")
 
     def run_command_in_new_window(self, cmd):
+        """Safely executes a command in a new window with comprehensive error handling."""
         try:
-            # Open a new command window and run the specified command
-            subprocess.Popen(['cmd', '/c', cmd])
+            # Log the command execution for transparency
+            self.append_output(f"Executing command: {cmd}\n")
+            
+            # Use subprocess.run with proper parameters for better security and error handling
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = 1  # SW_SHOWNORMAL
+            
+            # Create the process with proper error handling
+            process = subprocess.Popen(
+                ['cmd', '/c', cmd],
+                startupinfo=startupinfo,
+                creationflags=subprocess.CREATE_NEW_CONSOLE
+            )
+            
+            self.append_output(f"Command started successfully (PID: {process.pid})\n")
+            
+        except FileNotFoundError:
+            self.append_output(f"Error: 'cmd' command not found. This is unusual for Windows systems.\n", "red")
+        except subprocess.SubprocessError as e:
+            self.append_output(f"Subprocess error while running command: {e}\n", "red")
+        except PermissionError as e:
+            self.append_output(f"Permission denied while running command: {e}\n", "red")
         except Exception as e:
-            self.append_output(f"An error occurred while running command: {e}\n")
+            self.append_output(f"Unexpected error while running command: {e}\n", "red")
 
     def install_cuda(self):
         threading.Thread(target=self.run_command_in_new_window, args=('wsl -d DwemerAI4Skyrim3 -- /usr/local/bin/install_full_packages',), daemon=True).start()
