@@ -1459,7 +1459,7 @@ class CHIMLauncher(tk.Tk):
         # Create a new Toplevel window
         submenu_window = tk.Toplevel(self)
         submenu_window.title("Install Components")
-        submenu_window.geometry("500x840")  
+        submenu_window.geometry("500x890")  
         submenu_window.configure(bg="#2C2C2C")
         submenu_window.resizable(False, False)
         # Set the window icon to CHIM.png
@@ -1547,7 +1547,8 @@ class CHIMLauncher(tk.Tk):
             "Minime-T5": "A tiny helper Large Language Model (LLM). Used by CHIM to improve AI NPC responses. Also comes with TXT2VEC, an efficent vector service. Runs on GPU or CPU efficently.\n\nVRAM Usage: 400MB",
             "Mimic3": "An older but fast Text-to-Speech (TTS) service. Does not come with Skyrim voices.\n\nVRAM Usage: Under Less than 1GB",
             "Piper-TTS": "MUST INSTALL VOICES SEPARATELY. A fast and efficient Text-to-Speech (TTS) service ideal for low-end systems. Runs fast on CPU, making it a great option for systems without Nvidia GPUs or for lower resource usage. \n\nVRAM Usage: Under 1GB",
-            "LocalWhisper": "Offline Speech-to-Text (STT) service based on OpenAI's Whisper. Allows you to use your microphone to chat with NPCs.\n\nVRAM Usage: 1-2GB"
+            "LocalWhisper": "Offline Speech-to-Text (STT) service based on OpenAI's Whisper. Allows you to use your microphone to chat with NPCs.\n\nVRAM Usage: 1-2GB",
+            "Parakeet": "High-performance offline Speech-to-Text (STT) service using NVIDIA's Parakeet TDT model. Supports GPU (best quality) and CPU modes.\n\nVRAM Usage: 1-2GB"
         }
 
         # --- Hover Handler for Install Buttons ---
@@ -1751,6 +1752,12 @@ class CHIMLauncher(tk.Tk):
             show_nvidia=True, show_amd=True
         )
 
+        # Parakeet - NVIDIA and AMD
+        parakeet_button = create_component_button(
+            button_frame, "🎙Parakeet STT", self.install_parakeet, "Parakeet", 
+            show_nvidia=True, show_amd=True
+        )
+
         # README Section
         readme_frame = tk.LabelFrame(
             submenu_window,
@@ -1863,6 +1870,9 @@ class CHIMLauncher(tk.Tk):
     
     def install_localwhisper(self):
         threading.Thread(target=self.run_command_in_new_window, args=('wsl -d DwemerAI4Skyrim3 -u dwemer -- /home/dwemer/remote-faster-whisper/ddistro_install.sh',), daemon=True).start()
+
+    def install_parakeet(self):
+        threading.Thread(target=self.run_command_in_new_window, args=('wsl -d DwemerAI4Skyrim3 -u dwemer -- /home/dwemer/parakeet-api-server/ddistro_install.sh',), daemon=True).start()
  
     def open_debugging_menu(self):
         # Create a new Toplevel window
