@@ -2356,7 +2356,8 @@ class CHIMLauncher(tk.Tk):
             "/home/dwemer/remote-faster-whisper/log.txt",
             "/home/dwemer/MeloTTS/melo/log.txt", # Corrected path
             "/home/dwemer/piper/log.txt",
-            "/home/dwemer/mimic3/log.txt"
+            "/home/dwemer/mimic3/log.txt",
+            "/home/dwemer/parakeet-api-server/log.txt"
         ]
         
         combined_log_content = "" # Initialize empty string for combined logs
