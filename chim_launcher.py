@@ -5,6 +5,7 @@ import subprocess
 import threading
 import re
 import requests
+from bs4 import BeautifulSoup
 import webbrowser
 import datetime
 import sys
@@ -13,6 +14,7 @@ from PIL import Image, ImageTk
 import http.server
 import socketserver
 import urllib.parse
+import urllib.request
 import io # Added for reading request body
 import tkinter.filedialog # Added for save dialog
 
@@ -194,7 +196,7 @@ class CHIMLauncher(tk.Tk):
         super().__init__()
         self.title("CHIM")
         # Make window wider and taller, disable resizing
-        self.geometry("870x870") 
+        self.geometry("870x960") 
         self.configure(bg="#2C2C2C")
         self.resizable(False, False) # Disable resizing
 
@@ -242,6 +244,12 @@ class CHIMLauncher(tk.Tk):
         
         # Start the update check in a separate thread
         threading.Thread(target=self.check_for_updates, daemon=True).start()
+        
+        # Start the Nexus version check in a separate thread
+        threading.Thread(target=self.check_nexus_version, daemon=True).start()
+        
+        # Start the local server version check in a separate thread
+        threading.Thread(target=self.check_local_version, daemon=True).start()
         
         # Start the proxy server and discovery service
         self.start_proxy_server()
@@ -537,6 +545,26 @@ class CHIMLauncher(tk.Tk):
             font=("Trebuchet MS", 10)
         )
         self.update_status_label.pack(pady=5, fill=tk.X)
+
+        # Create and pack the Nexus version label
+        self.nexus_version_label = tk.Label(
+            server_updates_frame,
+            text="Nexus: ...",
+            fg="white",
+            bg="#2C2C2C",
+            font=("Trebuchet MS", 10)
+        )
+        self.nexus_version_label.pack(pady=5, fill=tk.X)
+
+        # Create and pack the local server version label
+        self.local_version_label = tk.Label(
+            server_updates_frame,
+            text="Chim Server: ...",
+            fg="white",
+            bg="#2C2C2C",
+            font=("Trebuchet MS", 10)
+        )
+        self.local_version_label.pack(pady=5, fill=tk.X)
 
         # --- Server Configuration Group --- 
         server_config_frame = tk.LabelFrame(left_frame, text="Server Configuration", **labelframe_style)
@@ -895,9 +923,10 @@ class CHIMLauncher(tk.Tk):
         except Exception as e:
             self.append_output(f"Error during update: {e}\n", "red")
         finally:
-            # We don't need to run the check immediately since we've already updated the label
-            # But keep it for verification after a delay
+            # Recheck versions after update
             self.after(1000, lambda: threading.Thread(target=self.check_for_updates, daemon=True).start())
+            self.after(1000, lambda: threading.Thread(target=self.check_nexus_version, daemon=True).start())
+            self.after(1000, lambda: threading.Thread(target=self.check_local_version, daemon=True).start())
 
     def update_distro(self):
         threading.Thread(target=self.update_distro_thread, daemon=True).start()
@@ -1055,8 +1084,10 @@ class CHIMLauncher(tk.Tk):
         except Exception as e:
             self.append_output(f"Error during distro update: {e}\n", "red")
         finally:
-            # Check status after a delay to verify
+            # Recheck versions after update
             self.after(1000, lambda: threading.Thread(target=self.check_for_updates, daemon=True).start())
+            self.after(1000, lambda: threading.Thread(target=self.check_nexus_version, daemon=True).start())
+            self.after(1000, lambda: threading.Thread(target=self.check_local_version, daemon=True).start())
 
     def refresh_distro_version(self):
         """Refreshes the distro version display after an update."""
@@ -2184,6 +2215,16 @@ class CHIMLauncher(tk.Tk):
             print(f"Exception in get_current_server_version: {e}")
             return None
 
+    def get_local_server_version(self):
+        """Read server version from .version_number.txt."""
+        try:
+            version_file = r'\\wsl$\DwemerAI4Skyrim3\var\www\html\HerikaServer\.version_number.txt'
+            with open(version_file, 'r') as f:
+                version = f.read().strip()
+                return version if version else None
+        except Exception:
+            return None
+
     def get_git_version(self):
         """Get the latest server version from GitHub based on current branch."""
         try:
@@ -2559,6 +2600,207 @@ class CHIMLauncher(tk.Tk):
         # Update the label with final text and color
         update_label_config({"text": final_text, "fg": text_color})
 
+    def get_nexus_version(self):
+        """Fetch the current mod version from Nexus Mods page."""
+        try:
+            url = "https://www.nexusmods.com/skyrimspecialedition/mods/126330"
+            html_text = None
+            
+            # Try urllib first (most reliable)
+            try:
+                req = urllib.request.Request(url)
+                req.add_header('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+                req.add_header('Accept', 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8')
+                req.add_header('Accept-Language', 'en-US,en;q=0.9')
+                req.add_header('Referer', 'https://www.nexusmods.com/')
+                
+                with urllib.request.urlopen(req, timeout=10) as response:
+                    html_text = response.read().decode('utf-8')
+            except urllib.error.HTTPError as e:
+                if e.code == 403:
+                    # Try requests with session as fallback
+                    session = requests.Session()
+                    headers = {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+                        'Accept-Language': 'en-US,en;q=0.9',
+                        'Referer': 'https://www.nexusmods.com/',
+                    }
+                    try:
+                        session.get('https://www.nexusmods.com/', headers=headers, timeout=10)
+                    except:
+                        pass
+                    response = session.get(url, headers=headers, timeout=10)
+                    response.raise_for_status()
+                    html_text = response.text
+                else:
+                    raise
+            except Exception:
+                # Try requests if urllib fails
+                try:
+                    session = requests.Session()
+                    headers = {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+                        'Accept-Language': 'en-US,en;q=0.9',
+                        'Referer': 'https://www.nexusmods.com/',
+                    }
+                    try:
+                        session.get('https://www.nexusmods.com/', headers=headers, timeout=10)
+                    except:
+                        pass
+                    response = session.get(url, headers=headers, timeout=10)
+                    response.raise_for_status()
+                    html_text = response.text
+                except requests.RequestException:
+                    # Last resort: try curl via subprocess
+                    try:
+                        curl_cmd = [
+                            'curl', '-s', '-L',
+                            '-H', 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                            '-H', 'Referer: https://www.nexusmods.com/',
+                            url
+                        ]
+                        result = subprocess.run(curl_cmd, capture_output=True, text=True, timeout=15)
+                        if result.returncode == 0:
+                            html_text = result.stdout
+                    except Exception:
+                        pass
+            
+            if not html_text:
+                return None
+            
+            # Try to find version using regex in raw HTML
+            patterns = [
+                r'<div[^>]*class=["\']titlestat["\'][^>]*>Version</div>.*?<div[^>]*class=["\']stat["\'][^>]*>(\d+\.\d+\.\d+)</div>',
+                r'(?:Version|version)[^>]*>.*?<div[^>]*class=["\']stat["\'][^>]*>(\d+\.\d+\.\d+)</div>',
+                r'<div[^>]*class=["\']stat["\'][^>]*>(\d+\.\d+\.\d+)</div>',
+            ]
+            for pattern in patterns:
+                version_match = re.search(pattern, html_text, re.IGNORECASE | re.DOTALL)
+                if version_match:
+                    version = version_match.group(1)
+                    if version:
+                        return version
+            
+            # Parse HTML with BeautifulSoup for more precise matching
+            soup = BeautifulSoup(html_text, 'html.parser')
+            
+            # Find statitem with "Version" title, then get the stat div
+            for statitem in soup.find_all('div', class_='statitem'):
+                title_div = statitem.find('div', class_='titlestat')
+                if title_div:
+                    title_text = title_div.get_text(strip=True)
+                    if title_text == 'Version':
+                        stat_div = statitem.find('div', class_='stat')
+                        if stat_div:
+                            version = stat_div.get_text(strip=True)
+                            if version:
+                                return version
+            
+            # Fallback: Find by SVG icon with class 'icon-stat-version'
+            version_icon = soup.find('svg', class_='icon-stat-version')
+            if version_icon:
+                statitem = version_icon.find_parent('div', class_='statitem')
+                if statitem:
+                    stat_div = statitem.find('div', class_='stat')
+                    if stat_div:
+                        version = stat_div.get_text(strip=True)
+                        if version:
+                            return version
+            
+            # Fallback: Search all stat divs and verify their parent statitem has "Version"
+            for stat_div in soup.find_all('div', class_='stat'):
+                statitem = stat_div.find_parent('div', class_='statitem')
+                if statitem:
+                    title_div = statitem.find('div', class_='titlestat')
+                    if title_div:
+                        title_text = title_div.get_text(strip=True)
+                        if title_text == 'Version':
+                            version = stat_div.get_text(strip=True)
+                            if version:
+                                return version
+            
+            # Fallback: Look for version pattern in stat divs near "Version" text
+            for element in soup.find_all(string=re.compile(r'Version', re.I)):
+                parent = element.find_parent()
+                while parent:
+                    if parent.name == 'div' and 'statitem' in parent.get('class', []):
+                        stat_div = parent.find('div', class_='stat')
+                        if stat_div:
+                            version = stat_div.get_text(strip=True)
+                            if version and re.match(r'^\d+\.\d+\.\d+', version):
+                                return version
+                        break
+                    parent = parent.find_parent()
+            
+            return None
+        except Exception:
+            return None
+
+    def check_nexus_version(self):
+        """Fetch and display the Nexus Mods version."""
+        update_label = lambda config: self.after(0, self.nexus_version_label.config, config)
+        
+        nexus_version = self.get_nexus_version()
+        local_version = self.get_local_server_version()
+        current_branch = self.get_current_branch()
+        
+        if nexus_version:
+            # Check branch-specific logic
+            if current_branch == "aiagent":
+                # On aiagent branch: check if versions are synced
+                if local_version and nexus_version != local_version:
+                    # Versions are not synced - show messages
+                    def update_with_messages():
+                        self.nexus_version_label.config(
+                            text=f"Nexus: {nexus_version} | Press Update and download the latest AIAgent (Click Here)",
+                            fg="yellow",
+                            cursor="hand2",
+                            underline=True
+                        )
+                        # Make label clickable to download page
+                        self.nexus_version_label.bind("<Button-1>", lambda e: webbrowser.open("https://www.nexusmods.com/skyrimspecialedition/mods/126330?tab=files"))
+                    self.after(0, update_with_messages)
+                    return
+                else:
+                    # Versions are synced or no local version
+                    update_label({"text": f"Nexus: {nexus_version}", "fg": "lime green"})
+            elif current_branch == "dev":
+                # On dev branch: redirect to Discord for beta plugin
+                def update_with_discord():
+                    self.nexus_version_label.config(
+                        text=f"Nexus: {nexus_version} | Download latest beta plugin from Discord (Click Here)",
+                        fg="yellow",
+                        cursor="hand2",
+                        underline=True
+                    )
+                    # Make label clickable to Discord
+                    self.nexus_version_label.bind("<Button-1>", lambda e: webbrowser.open("https://discord.com/invite/NDn9qud2ug"))
+                self.after(0, update_with_discord)
+                return
+            else:
+                # Other branches: just show version without special logic
+                update_label({"text": f"Nexus: {nexus_version}", "fg": "lime green"})
+        else:
+            update_label({"text": "Nexus: N/A", "fg": "yellow"})
+        
+        # Unbind click if no special logic applies
+        try:
+            self.nexus_version_label.unbind("<Button-1>")
+        except:
+            pass
+
+    def check_local_version(self):
+        """Fetch and display the local server version."""
+        update_label = lambda config: self.after(0, self.local_version_label.config, config)
+        
+        version = self.get_local_server_version()
+        if version:
+            update_label({"text": f"CHIM Server: {version}", "fg": "lime green"})
+        else:
+            update_label({"text": "SHIM Server: N/A", "fg": "yellow"})
+
     def update_all(self):
         """Perform a complete update of both distro and server components."""
         threading.Thread(target=self.update_all_thread, daemon=True).start()
@@ -2667,8 +2909,10 @@ class CHIMLauncher(tk.Tk):
                 fg="red"
             ))
         finally:
-            # Run the check for updates after a short delay to verify
+            # Recheck versions after update
             self.after(2000, lambda: threading.Thread(target=self.check_for_updates, daemon=True).start())
+            self.after(2000, lambda: threading.Thread(target=self.check_nexus_version, daemon=True).start())
+            self.after(2000, lambda: threading.Thread(target=self.check_local_version, daemon=True).start())
 
 if __name__ == "__main__":
     app = CHIMLauncher()
