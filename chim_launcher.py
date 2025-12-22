@@ -196,7 +196,7 @@ class CHIMLauncher(tk.Tk):
         super().__init__()
         self.title("CHIM")
         # Make window wider and taller, disable resizing
-        self.geometry("870x960") 
+        self.geometry("880x950") 
         self.configure(bg="#2C2C2C")
         self.resizable(False, False) # Disable resizing
 
@@ -247,9 +247,6 @@ class CHIMLauncher(tk.Tk):
         
         # Start the Nexus version check in a separate thread
         threading.Thread(target=self.check_nexus_version, daemon=True).start()
-        
-        # Start the local server version check in a separate thread
-        threading.Thread(target=self.check_local_version, daemon=True).start()
         
         # Start the proxy server and discovery service
         self.start_proxy_server()
@@ -536,10 +533,10 @@ class CHIMLauncher(tk.Tk):
         self.update_button.pack(fill=tk.X, pady=5)
         self.add_hover_effects(self.update_button, standard_button_bg, standard_button_hover_bg)
 
-        # Create and pack the update status label
+        # Create and pack the combined CHIM Server version and update status label
         self.update_status_label = tk.Label(
             server_updates_frame,
-            text="Checking for Updates...",
+            text="CHIM Server: ...",
             fg="white",
             bg="#2C2C2C",
             font=("Trebuchet MS", 10)
@@ -555,16 +552,6 @@ class CHIMLauncher(tk.Tk):
             font=("Trebuchet MS", 10)
         )
         self.nexus_version_label.pack(pady=5, fill=tk.X)
-
-        # Create and pack the local server version label
-        self.local_version_label = tk.Label(
-            server_updates_frame,
-            text="Chim Server: ...",
-            fg="white",
-            bg="#2C2C2C",
-            font=("Trebuchet MS", 10)
-        )
-        self.local_version_label.pack(pady=5, fill=tk.X)
 
         # --- Server Configuration Group --- 
         server_config_frame = tk.LabelFrame(left_frame, text="Server Configuration", **labelframe_style)
@@ -926,7 +913,6 @@ class CHIMLauncher(tk.Tk):
             # Recheck versions after update
             self.after(1000, lambda: threading.Thread(target=self.check_for_updates, daemon=True).start())
             self.after(1000, lambda: threading.Thread(target=self.check_nexus_version, daemon=True).start())
-            self.after(1000, lambda: threading.Thread(target=self.check_local_version, daemon=True).start())
 
     def update_distro(self):
         threading.Thread(target=self.update_distro_thread, daemon=True).start()
@@ -1063,20 +1049,12 @@ class CHIMLauncher(tk.Tk):
                     )
                     self.append_output(f"Distro updated to version {repo_version}.\n", "green")
                     
-                    # Use the server version check after update
-                    self.after(0, lambda: self.update_status_label.config(
-                        text="Checking for Updates...",
-                        fg="white"
-                    ))
+                    # Recheck version and status after update
                     self.after(1000, lambda: threading.Thread(target=self.check_for_updates, daemon=True).start())
                 else:
                     self.append_output("Distro update completed successfully.\n", "green")
                     
-                    # Use the server version check after update
-                    self.after(0, lambda: self.update_status_label.config(
-                        text="Checking for Updates...",
-                        fg="white"
-                    ))
+                    # Recheck version and status after update
                     self.after(1000, lambda: threading.Thread(target=self.check_for_updates, daemon=True).start())
             else:
                 self.append_output(f"Distro update may have encountered issues (exit code: {update_script_process.returncode}).\n", "red")
@@ -1087,7 +1065,6 @@ class CHIMLauncher(tk.Tk):
             # Recheck versions after update
             self.after(1000, lambda: threading.Thread(target=self.check_for_updates, daemon=True).start())
             self.after(1000, lambda: threading.Thread(target=self.check_nexus_version, daemon=True).start())
-            self.after(1000, lambda: threading.Thread(target=self.check_local_version, daemon=True).start())
 
     def refresh_distro_version(self):
         """Refreshes the distro version display after an update."""
@@ -2141,6 +2118,8 @@ class CHIMLauncher(tk.Tk):
                     
                     # Check for updates after switching branch
                     self.after(1000, lambda: threading.Thread(target=self.check_for_updates, daemon=True).start())
+                    # Check Nexus/Discord version after switching branch
+                    self.after(1000, lambda: threading.Thread(target=self.check_nexus_version, daemon=True).start())
                     
             elif current_branch == "dev":
                 # Currently on Dev branch, switch to Release
@@ -2170,6 +2149,8 @@ class CHIMLauncher(tk.Tk):
                     
                     # Check for updates after switching branch
                     self.after(1000, lambda: threading.Thread(target=self.check_for_updates, daemon=True).start())
+                    # Check Nexus/Discord version after switching branch
+                    self.after(1000, lambda: threading.Thread(target=self.check_nexus_version, daemon=True).start())
                     
             else:
                 # Unexpected branch, switch back to aiagent
@@ -2199,6 +2180,8 @@ class CHIMLauncher(tk.Tk):
                     
                     # Check for updates after switching branch
                     self.after(1000, lambda: threading.Thread(target=self.check_for_updates, daemon=True).start())
+                    # Check Nexus/Discord version after switching branch
+                    self.after(1000, lambda: threading.Thread(target=self.check_nexus_version, daemon=True).start())
 
         except Exception as e:
             self.append_output(f"Error switching branch: {str(e)}\n")
@@ -2321,30 +2304,50 @@ class CHIMLauncher(tk.Tk):
             print(f"Exception in get_current_branch: {e}")
             return None
 
+    def format_date_version(self, version_str):
+        """Convert date-based version (e.g., 2025121413) to readable date (12-14-2025).
+        
+        Format: YYYYMMDDHH -> MM-DD-YYYY
+        """
+        try:
+            if version_str and len(version_str) >= 8:
+                year = version_str[0:4]
+                month = version_str[4:6]
+                day = version_str[6:8]
+                return f"{month}-{day}-{year}"
+            return version_str
+        except Exception:
+            return version_str
+
     def check_for_updates(self):
-        """Check if a newer server version is available and update the status label."""
+        """Check if a newer server version is available and update the combined status label."""
         # Use after(0, ...) to ensure UI updates happen on the main thread
         update_label_config = lambda config: self.after(0, self.update_status_label.config, config)
 
         # Initial state while checking
-        update_label_config({"text": "Checking for Updates...", "fg": "white"})
+        update_label_config({"text": "CHIM Server: Checking...", "fg": "white"})
 
         # Start threads to get versions and branch concurrently
+        # Use date-based version (.version.txt) for server update check
         current_version = [None]
         git_version = [None]
         current_branch = [None]
+        semantic_version = [None]  # Add semantic version for display
 
         def get_current_version_thread():
-            current_version[0] = self.get_current_server_version()
+            current_version[0] = self.get_current_server_version()  # Date-based version from .version.txt
         def get_git_version_thread():
-            git_version[0] = self.get_git_version()
+            git_version[0] = self.get_git_version()  # Date-based version from GitHub
         def get_branch_thread():
             current_branch[0] = self.get_current_branch()
+        def get_semantic_version_thread():
+            semantic_version[0] = self.get_local_server_version()  # Semantic version from .version_number.txt
 
         threads = [
             threading.Thread(target=get_current_version_thread),
             threading.Thread(target=get_git_version_thread),
-            threading.Thread(target=get_branch_thread)
+            threading.Thread(target=get_branch_thread),
+            threading.Thread(target=get_semantic_version_thread)
         ]
         for t in threads:
             t.start()
@@ -2352,22 +2355,32 @@ class CHIMLauncher(tk.Tk):
             t.join() # Wait for all threads to complete
 
         branch_text = f" ({current_branch[0]})" if current_branch[0] else ""
+        # Format the date version for display (2025121413 -> 12-14-2025)
+        date_display = self.format_date_version(current_version[0]) if current_version[0] else "N/A"
+        semantic_display = semantic_version[0] if semantic_version[0] else "N/A"
+        # Combine date and semantic version
+        version_display = f"{date_display} | {semantic_display}"
         final_text = ""
         text_color = "white" # Default color
 
         if current_version[0] and git_version[0]:
+            # Compare date-based versions (e.g., 2025121413)
             comparison = self.compare_versions(current_version[0], git_version[0])
             if comparison < 0:
-                # Update available
-                final_text = f"Update Available!{branch_text}"
+                # Update available - GitHub has newer server code
+                final_text = f"CHIM Server{branch_text}: Update Available [{version_display}]"
                 text_color = "red"
             else:
-                # Up-to-date
-                final_text = f"Up-to-date{branch_text}"
+                # Up-to-date - server code matches GitHub
+                final_text = f"CHIM Server{branch_text}: Fully Updated [{version_display}]"
                 text_color = "lime green"
+        elif current_version[0]:
+            # Have local version but no git version
+            final_text = f"CHIM Server{branch_text}: [{version_display}]"
+            text_color = "lime green"
         else:
             # Could not retrieve version information
-            final_text = f"Version Check Failed{branch_text}"
+            final_text = f"CHIM Server{branch_text}: [N/A]"
             text_color = "yellow" # Use yellow for check failure
             
         # Update the label with final text and color
@@ -2751,10 +2764,10 @@ class CHIMLauncher(tk.Tk):
             if current_branch == "aiagent":
                 # On aiagent branch: check if versions are synced
                 if local_version and nexus_version != local_version:
-                    # Versions are not synced - show messages
+                    # Versions are not synced - show warning message
                     def update_with_messages():
                         self.nexus_version_label.config(
-                            text=f"Nexus: {nexus_version} | Press Update and download the latest AIAgent (Click Here)",
+                            text=f"Nexus: {nexus_version}: Click to download the latest AIAgent from the Nexus",
                             fg="yellow",
                             cursor="hand2",
                             underline=True
@@ -2764,14 +2777,24 @@ class CHIMLauncher(tk.Tk):
                     self.after(0, update_with_messages)
                     return
                 else:
-                    # Versions are synced or no local version
-                    update_label({"text": f"Nexus: {nexus_version}", "fg": "lime green"})
+                    # Versions are synced - show green but still clickable
+                    def update_with_link():
+                        self.nexus_version_label.config(
+                            text=f"Nexus: {nexus_version}",
+                            fg="lime green",
+                            cursor="hand2",
+                            underline=True
+                        )
+                        # Make label clickable to download page
+                        self.nexus_version_label.bind("<Button-1>", lambda e: webbrowser.open("https://www.nexusmods.com/skyrimspecialedition/mods/126330?tab=files"))
+                    self.after(0, update_with_link)
+                    return
             elif current_branch == "dev":
-                # On dev branch: redirect to Discord for beta plugin
+                # On dev branch: always show Discord link (no version tracking)
                 def update_with_discord():
                     self.nexus_version_label.config(
-                        text=f"Nexus: {nexus_version} | Download latest beta plugin from Discord (Click Here)",
-                        fg="yellow",
+                        text="Discord Beta: Download latest beta plugin (Click Here)",
+                        fg="white",
                         cursor="hand2",
                         underline=True
                     )
@@ -2780,8 +2803,18 @@ class CHIMLauncher(tk.Tk):
                 self.after(0, update_with_discord)
                 return
             else:
-                # Other branches: just show version without special logic
-                update_label({"text": f"Nexus: {nexus_version}", "fg": "lime green"})
+                # Other branches: show version and make clickable
+                def update_with_link():
+                    self.nexus_version_label.config(
+                        text=f"Nexus: {nexus_version}",
+                        fg="lime green",
+                        cursor="hand2",
+                        underline=True
+                    )
+                    # Make label clickable to download page
+                    self.nexus_version_label.bind("<Button-1>", lambda e: webbrowser.open("https://www.nexusmods.com/skyrimspecialedition/mods/126330?tab=files"))
+                self.after(0, update_with_link)
+                return
         else:
             update_label({"text": "Nexus: N/A", "fg": "yellow"})
         
@@ -2791,18 +2824,19 @@ class CHIMLauncher(tk.Tk):
         except:
             pass
 
-    def check_local_version(self):
-        """Fetch and display the local server version."""
-        update_label = lambda config: self.after(0, self.local_version_label.config, config)
-        
-        version = self.get_local_server_version()
-        if version:
-            update_label({"text": f"CHIM Server: {version}", "fg": "lime green"})
-        else:
-            update_label({"text": "SHIM Server: N/A", "fg": "yellow"})
-
     def update_all(self):
         """Perform a complete update of both distro and server components."""
+        # Check if on aiagent branch with misaligned versions
+        current_branch = self.get_current_branch()
+        if current_branch == "aiagent":
+            nexus_version = self.get_nexus_version()
+            local_version = self.get_local_server_version()
+            
+            # If versions are misaligned, open Nexus download page
+            if nexus_version and local_version and nexus_version != local_version:
+                webbrowser.open("https://www.nexusmods.com/skyrimspecialedition/mods/126330?tab=files")
+        
+        # Continue with normal update process
         threading.Thread(target=self.update_all_thread, daemon=True).start()
 
     def update_all_thread(self):
@@ -2883,11 +2917,8 @@ class CHIMLauncher(tk.Tk):
                 else:
                     self.append_output(f"Update completed. Branch: {current_branch}\n", "green")
                     
-                # Set update status to show it's up-to-date
-                self.after(0, lambda: self.update_status_label.config(
-                    text=f"Up-to-date ({current_branch})",
-                    fg="lime green"
-                ))
+                # Recheck version and status after update
+                self.after(2000, lambda: threading.Thread(target=self.check_for_updates, daemon=True).start())
             else:
                 # Something went wrong
                 if not distro_update_complete:
@@ -2896,7 +2927,7 @@ class CHIMLauncher(tk.Tk):
                     self.append_output("Server update may not have completed successfully.\n", "red")
                 
                 self.after(0, lambda: self.update_status_label.config(
-                    text="Update may have issues - see log",
+                    text="CHIM Server: Update may have issues - see log",
                     fg="red"
                 ))
                 
@@ -2905,14 +2936,13 @@ class CHIMLauncher(tk.Tk):
             import traceback
             self.append_output(f"Traceback: {traceback.format_exc()}\n", "red")
             self.after(0, lambda: self.update_status_label.config(
-                text="Update error - see log",
+                text="CHIM Server: Update error - see log",
                 fg="red"
             ))
         finally:
             # Recheck versions after update
             self.after(2000, lambda: threading.Thread(target=self.check_for_updates, daemon=True).start())
             self.after(2000, lambda: threading.Thread(target=self.check_nexus_version, daemon=True).start())
-            self.after(2000, lambda: threading.Thread(target=self.check_local_version, daemon=True).start())
 
 if __name__ == "__main__":
     app = CHIMLauncher()
