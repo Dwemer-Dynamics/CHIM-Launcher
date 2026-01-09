@@ -1467,7 +1467,7 @@ class CHIMLauncher(tk.Tk):
         # Create a new Toplevel window
         submenu_window = tk.Toplevel(self)
         submenu_window.title("Install Components")
-        submenu_window.geometry("500x890")  
+        submenu_window.geometry("500x980")  
         submenu_window.configure(bg="#2C2C2C")
         submenu_window.resizable(False, False)
         # Set the window icon to CHIM.png
@@ -1539,7 +1539,7 @@ class CHIMLauncher(tk.Tk):
             font=("Trebuchet MS", 10),
             wraplength=460, # Wrap text within the frame width
             justify="left",
-            height=6 # Increased from 4 to 6 to accommodate longer descriptions
+            height=8 # Increased to accommodate longer descriptions with port conflict notes
         )
         desc_label.pack(fill=tk.X, pady=5)
 
@@ -1550,7 +1550,8 @@ class CHIMLauncher(tk.Tk):
         # --- Descriptions Dictionary ---
         component_descriptions = {
             "CUDA": "Nvidia's special software that lets AI tools work with their graphics cards, without it programs like CHIM XTTS won't work. Install this first if you have a Nvidia GPU.",
-            "CHIM XTTS": "A High-quality and realistic Text-to-Speech (TTS) service. Requires an Nvidia GPU with sufficient VRAM (4GB+) and CUDA installed. Provides immersive NPC voices with the ability to generate new ones automatically ingame.\n\nVRAM Usage: 4GB",
+            "CHIM XTTS": "A High-quality and realistic Text-to-Speech (TTS) service. Requires an Nvidia GPU with sufficient VRAM (4GB+) and CUDA installed. Provides immersive NPC voices with the ability to generate new ones automatically ingame.\n\nNOTE: Uses the same port as Chatterbox - only one can be enabled at a time.\n\nVRAM Usage: 4GB",
+            "Chatterbox": "High-quality multilingual Text-to-Speech (TTS) service with voice cloning capabilities. Requires an Nvidia GPU with CUDA installed.\n\nNOTE: Uses the same port as CHIM XTTS - only one can be enabled at a time.\n\nVRAM Usage: ~4GB",
             "MeloTTS": "A fast, and efficient Text-to-Speech (TTS) service ideal for low-end systems. Runs efficiently on CPU, making it a great option for systems without Nvidia GPUs or for lower resource usage.\n\nVRAM Usage: Under 1GB",
             "Minime-T5": "A tiny helper Large Language Model (LLM). Used by CHIM to improve AI NPC responses. Also comes with TXT2VEC, an efficent vector service. Runs on GPU or CPU efficently.\n\nVRAM Usage: 400MB",
             "Mimic3": "An older but fast Text-to-Speech (TTS) service. Does not come with Skyrim voices.\n\nVRAM Usage: Under Less than 1GB",
@@ -1718,6 +1719,12 @@ class CHIMLauncher(tk.Tk):
             show_nvidia=True, show_amd=False
         )
         
+        # Chatterbox - Only NVIDIA
+        chatterbox_button = create_component_button(
+            button_frame, "     🗣Chatterbox", self.install_chatterbox, "Chatterbox", 
+            show_nvidia=True, show_amd=False
+        )
+        
         # MeloTTS - NVIDIA and AMD
         melotts_button = create_component_button(
             button_frame, "🗣MeloTTS", self.install_melotts, "MeloTTS", 
@@ -1864,6 +1871,9 @@ class CHIMLauncher(tk.Tk):
     def install_xtts(self):
         threading.Thread(target=self.run_command_in_new_window, args=('wsl -d DwemerAI4Skyrim3 -u dwemer -- /home/dwemer/xtts-api-server/ddistro_install.sh',), daemon=True).start()
 
+    def install_chatterbox(self):
+        threading.Thread(target=self.run_command_in_new_window, args=('wsl -d DwemerAI4Skyrim3 -u dwemer -- /home/dwemer/chatterbox/ddistro_install.sh',), daemon=True).start()
+
     def install_melotts(self):
         threading.Thread(target=self.run_command_in_new_window, args=('wsl -d DwemerAI4Skyrim3 -u dwemer -- /home/dwemer/MeloTTS/ddistro_install.sh',), daemon=True).start()
 
@@ -1960,6 +1970,7 @@ class CHIMLauncher(tk.Tk):
         tk.Label(debug_button_frame, text="--- View Logs ---", bg="#2C2C2C", fg="white", font=("Trebuchet MS", 10, "bold")).pack(pady=(0, 5))
         log_view_commands = [
             ("View CHIM XTTS Logs", self.view_xtts_logs),
+            ("View Chatterbox Logs", self.view_chatterbox_logs),
             ("View MeloTTS Logs", self.view_melotts_logs),
             ("View Piper Logs", self.view_piper_logs),
             ("View LocalWhisper Logs", self.view_localwhisper_logs),
@@ -1995,6 +2006,11 @@ class CHIMLauncher(tk.Tk):
     def view_xtts_logs(self):
         """Opens a new terminal window to view the CHIM XTTS logs."""
         cmd = 'wsl -d DwemerAI4Skyrim3 -u dwemer -- tail -n 100 -f /home/dwemer/xtts-api-server/log.txt'
+        threading.Thread(target=self.run_command_in_new_window, args=(cmd,), daemon=True).start()
+    
+    def view_chatterbox_logs(self):
+        """Opens a new terminal window to view the Chatterbox logs."""
+        cmd = 'wsl -d DwemerAI4Skyrim3 -u dwemer -- tail -n 100 -f /home/dwemer/chatterbox/log.txt'
         threading.Thread(target=self.run_command_in_new_window, args=(cmd,), daemon=True).start()
     
     def view_localwhisper_logs(self):
@@ -2412,6 +2428,7 @@ class CHIMLauncher(tk.Tk):
             "/var/www/html/HerikaServer/log/context_sent_to_llm.log",
             # DISTRO logs
             "/home/dwemer/xtts-api-server/log.txt",
+            "/home/dwemer/chatterbox/log.txt",
             "/home/dwemer/minime-t5/log.txt",
             "/home/dwemer/remote-faster-whisper/log.txt",
             "/home/dwemer/MeloTTS/melo/log.txt", # Corrected path
