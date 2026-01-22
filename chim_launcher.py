@@ -1954,6 +1954,7 @@ class CHIMLauncher(tk.Tk):
             ("View Memory Usage", self.view_memory_usage),
             (branch_display, lambda: self.switch_branch(debug_window)),
             ("Clean All Logs", self.clean_logs),
+            ("Configure CUDA GPU", self.open_cuda_config_menu),
         ]
         for text, command in action_commands:
             btn = tk.Button(
@@ -1992,6 +1993,247 @@ class CHIMLauncher(tk.Tk):
         """Opens a new terminal window with the specified command."""
         cmd = 'wsl -d DwemerAI4Skyrim3 -u dwemer -- /usr/local/bin/terminal'
         threading.Thread(target=self.run_command_in_new_window, args=(cmd,), daemon=True).start()
+
+    def open_cuda_config_menu(self):
+        """Opens a window to configure CUDA GPU selection."""
+        # Create a new Toplevel window
+        cuda_window = tk.Toplevel(self)
+        cuda_window.title("CUDA GPU Configuration")
+        cuda_window.geometry("450x420")
+        cuda_window.configure(bg="#2C2C2C")
+        cuda_window.resizable(False, False)
+
+        # Set the window icon
+        try:
+            icon_path = get_resource_path('CHIM.png')
+            img = Image.open(icon_path)
+            photo = ImageTk.PhotoImage(img)
+            cuda_window.iconphoto(False, photo)
+        except Exception as e:
+            print(f"Error setting icon: {e}")
+
+        # Main frame
+        main_frame = tk.Frame(cuda_window, bg="#2C2C2C")
+        main_frame.pack(pady=20, padx=20, fill=tk.BOTH, expand=True)
+
+        # Title label
+        title_label = tk.Label(
+            main_frame,
+            text="Select CUDA GPU Device",
+            bg="#2C2C2C",
+            fg="white",
+            font=("Trebuchet MS", 14, "bold")
+        )
+        title_label.pack(pady=(0, 10))
+
+        # Info label
+        info_label = tk.Label(
+            main_frame,
+            text="Choose which GPU to use for AI services.\nThis setting persists across updates.",
+            bg="#2C2C2C",
+            fg="#CCCCCC",
+            font=("Trebuchet MS", 9),
+            justify=tk.CENTER
+        )
+        info_label.pack(pady=(0, 10))
+
+        # Get current setting
+        current_gpu = self.get_current_gpu_setting()
+        
+        # Display current setting
+        current_setting_label = tk.Label(
+            main_frame,
+            text=f"Current Setting: {'GPU ' + current_gpu if current_gpu != 'all' else 'All GPUs'}",
+            bg="#2C2C2C",
+            fg="#90EE90",
+            font=("Trebuchet MS", 10, "bold"),
+            justify=tk.CENTER
+        )
+        current_setting_label.pack(pady=(0, 15))
+
+        # Radio button variable
+        gpu_var = tk.StringVar(value=current_gpu)
+        
+        # Label to show current selection
+        selection_label = tk.Label(
+            main_frame,
+            text=f"Selected: {'GPU ' + current_gpu if current_gpu != 'all' else 'All GPUs'}",
+            bg="#2C2C2C",
+            fg="#FFD700",
+            font=("Trebuchet MS", 9, "italic")
+        )
+        selection_label.pack(pady=(0, 10))
+        
+        # Update function for selection label
+        def update_selection_label(*args):
+            selected = gpu_var.get()
+            selection_label.config(text=f"Selected: {'GPU ' + selected if selected != 'all' else 'All GPUs'}")
+        
+        gpu_var.trace('w', update_selection_label)
+
+        # Radio button style
+        radio_style = {
+            'bg': "#2C2C2C",
+            'fg': "white",
+            'activebackground': "#2C2C2C",
+            'activeforeground': "white",
+            'selectcolor': "#5E0505",
+            'font': ("Trebuchet MS", 11),
+            'cursor': 'hand2',
+            'highlightthickness': 0,
+            'indicatoron': 1
+        }
+
+        # Create radio buttons
+        gpu_options = [
+            ("All GPUs (default)", "all"),
+            ("GPU 0 (Primary)", "0"),
+            ("GPU 1 (Secondary)", "1"),
+            ("GPU 2", "2"),
+            ("GPU 3", "3"),
+        ]
+
+        for text, value in gpu_options:
+            rb = tk.Radiobutton(
+                main_frame,
+                text=text,
+                variable=gpu_var,
+                value=value,
+                **radio_style
+            )
+            rb.pack(anchor=tk.W, pady=3)
+
+        # Button frame
+        button_frame = tk.Frame(main_frame, bg="#2C2C2C")
+        button_frame.pack(pady=(20, 0))
+
+        # Button style
+        button_style = {
+            'bg': '#5E0505',
+            'fg': 'white',
+            'activebackground': '#4A0404',
+            'activeforeground': 'white',
+            'font': ("Trebuchet MS", 11, "bold"),
+            'relief': 'flat',
+            'borderwidth': 0,
+            'highlightthickness': 0,
+            'cursor': 'hand2',
+            'width': 12
+        }
+
+        # Save button
+        save_btn = tk.Button(
+            button_frame,
+            text="Save",
+            command=lambda: self.save_cuda_setting(gpu_var.get(), cuda_window),
+            **button_style
+        )
+        save_btn.pack(side=tk.LEFT, padx=5)
+        self.add_hover_effects(save_btn, '#5E0505', '#4A0404')
+
+        # Cancel button
+        cancel_btn = tk.Button(
+            button_frame,
+            text="Cancel",
+            command=cuda_window.destroy,
+            **button_style
+        )
+        cancel_btn.pack(side=tk.LEFT, padx=5)
+        self.add_hover_effects(cancel_btn, '#5E0505', '#4A0404')
+
+    def get_current_gpu_setting(self):
+        """Get the current GPU setting from WSL."""
+        try:
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = 0  # SW_HIDE
+
+            cmd = ["wsl", "-d", "DwemerAI4Skyrim3", "--", "cat", "/home/dwemer/.cuda_config"]
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                startupinfo=startupinfo,
+                creationflags=subprocess.CREATE_NO_WINDOW
+            )
+            
+            if result.returncode == 0:
+                for line in result.stdout.split('\n'):
+                    line = line.strip()
+                    if line.startswith('export CUDA_VISIBLE_DEVICES=') and not line.startswith('#'):
+                        # Extract everything after the = sign
+                        gpu_num = line.split('=', 1)[1].strip()
+                        # Validate it's a digit or empty
+                        if gpu_num and gpu_num.isdigit():
+                            return gpu_num
+                        else:
+                            return "all"
+            
+            return "all"
+        except Exception:
+            return "all"
+
+    def save_cuda_setting(self, gpu_value, window):
+        """Save the CUDA GPU setting to WSL."""
+        try:
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = 0  # SW_HIDE
+
+            if gpu_value == "all":
+                config_content = """#!/bin/bash
+# CUDA Device Configuration
+# This file is auto-generated by CHIM Launcher and will NOT be overwritten by updates
+# Users can configure their GPU selection in the CHIM Launcher UI
+
+# Set which GPU device to use (0 = first GPU, 1 = second GPU, etc.)
+# Leave empty or unset to use all available GPUs
+# export CUDA_VISIBLE_DEVICES=1
+"""
+                display_name = "All GPUs"
+            else:
+                config_content = f"""#!/bin/bash
+# CUDA Device Configuration
+# This file is auto-generated by CHIM Launcher and will NOT be overwritten by updates
+# Users can configure their GPU selection in the CHIM Launcher UI
+
+# Set which GPU device to use (0 = first GPU, 1 = second GPU, etc.)
+# Currently set to: GPU {gpu_value}
+export CUDA_VISIBLE_DEVICES={gpu_value}
+"""
+                display_name = f"GPU {gpu_value}"
+
+            # Escape single quotes in content for bash
+            config_content_escaped = config_content.replace("'", "'\"'\"'")
+            
+            # Write config file to WSL
+            cmd = ["wsl", "-d", "DwemerAI4Skyrim3", "--", "bash", "-c", 
+                   f"printf '%s' '{config_content_escaped}' > /home/dwemer/.cuda_config && chmod +x /home/dwemer/.cuda_config"]
+            
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                startupinfo=startupinfo,
+                creationflags=subprocess.CREATE_NO_WINDOW
+            )
+            
+            if result.returncode == 0:
+                self.append_output(f"CUDA GPU setting changed to: {display_name}\n")
+                
+                if self.server_running or self.server_starting:
+                    messagebox.showinfo(
+                        "Restart Required",
+                        f"CUDA GPU set to: {display_name}\n\nRestart the server for changes to take effect."
+                    )
+                else:
+                    messagebox.showinfo("Success", f"CUDA GPU set to: {display_name}")
+                window.destroy()
+            else:
+                messagebox.showerror("Error", f"Failed to save GPU setting:\n{result.stderr}")
+                
+        except Exception as e:
+            messagebox.showerror("Error", f"An error occurred:\n{str(e)}")
 
     def view_memory_usage(self):
         """Opens a new terminal window to view memory usage using htop."""
