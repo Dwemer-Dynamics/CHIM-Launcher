@@ -1467,7 +1467,7 @@ class CHIMLauncher(tk.Tk):
         # Create a new Toplevel window
         submenu_window = tk.Toplevel(self)
         submenu_window.title("Install Components")
-        submenu_window.geometry("500x980")  
+        submenu_window.geometry("720x880")  
         submenu_window.configure(bg="#2C2C2C")
         submenu_window.resizable(False, False)
         # Set the window icon to CHIM.png
@@ -1543,9 +1543,28 @@ class CHIMLauncher(tk.Tk):
         )
         desc_label.pack(fill=tk.X, pady=5)
 
+        # --- Main Container with Scrollbar ---
+        main_container = tk.Frame(submenu_window, bg="#2C2C2C")
+        main_container.pack(pady=5, fill=tk.BOTH, expand=True, padx=10)
+
+        # Create canvas for scrolling
+        canvas = tk.Canvas(main_container, bg="#2C2C2C", highlightthickness=0)
+        scrollbar = ttk.Scrollbar(main_container, orient="vertical", command=canvas.yview)
+        scrollable_frame = tk.Frame(canvas, bg="#2C2C2C")
+
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
         # --- Buttons Section ---
-        button_frame = tk.Frame(submenu_window, bg="#2C2C2C")
-        button_frame.pack(pady=5)
+        button_frame = scrollable_frame
 
         # --- Descriptions Dictionary ---
         component_descriptions = {
@@ -1556,6 +1575,7 @@ class CHIMLauncher(tk.Tk):
             "Minime-T5": "A tiny helper Large Language Model (LLM). Used by CHIM to improve AI NPC responses. Also comes with TXT2VEC, an efficent vector service. Runs on GPU or CPU efficently.\n\nVRAM Usage: 400MB",
             "Mimic3": "An older but fast Text-to-Speech (TTS) service. Does not come with Skyrim voices.\n\nVRAM Usage: Under Less than 1GB",
             "Piper-TTS": "MUST INSTALL VOICES SEPARATELY. A fast and efficient Text-to-Speech (TTS) service ideal for low-end systems. Runs fast on CPU, making it a great option for systems without Nvidia GPUs or for lower resource usage. \n\nVRAM Usage: Under 1GB",
+            "PockeTTS": "A CPU-based Text-to-Speech (TTS) service using a flow-based language model. Runs on CPU, making it compatible with both AMD and NVIDIA systems. No GPU required.\n\nNOTE: Uses the same port as CHIM XTTS and Chatterbox (8020) - only one can be enabled at a time.\n\nVRAM Usage: None (CPU only)",
             "LocalWhisper": "Offline Speech-to-Text (STT) service based on OpenAI's Whisper. Allows you to use your microphone to chat with NPCs.\n\nVRAM Usage: 1-2GB",
             "Parakeet": "High-performance offline Speech-to-Text (STT) service using NVIDIA's Parakeet TDT model. Supports GPU (best quality) and CPU modes.\n\nVRAM Usage: 1-2GB"
         }
@@ -1573,25 +1593,24 @@ class CHIMLauncher(tk.Tk):
             button.bind('<Enter>', on_enter)
             button.bind('<Leave>', on_leave)
 
-        # Helper function to create buttons with icons
-        def create_component_button(parent, text, command, component_key, show_nvidia=True, show_amd=False):
+        # Helper function to create buttons with icons for grid layout
+        def create_component_button(parent, text, command, component_key, row, col, show_nvidia=True, show_amd=False):
             # Create a frame that will act as our button
             btn_frame = tk.Frame(parent, bg=standard_button_bg)
-            btn_frame.pack(pady=5, fill=tk.X, padx=2)  # Further reduce outer padding to use more screen width
+            btn_frame.grid(row=row, column=col, padx=5, pady=5, sticky="ew")
 
             # Create inner frame to hold everything with proper padding
-            inner_frame = tk.Frame(btn_frame, bg=standard_button_bg, padx=25, pady=10)  # Increased padding for wider buttons
-            inner_frame.pack(fill=tk.X, expand=True)  # Added expand=True to fill horizontal space
+            inner_frame = tk.Frame(btn_frame, bg=standard_button_bg, padx=15, pady=8)
+            inner_frame.pack(fill=tk.BOTH, expand=True)
             
             # Extract emoji and regular text from the button text
-            # Most emoji are 1-2 characters followed by a space
             parts = text.split(" ", 1)
             emoji = parts[0] + " " if len(parts) > 1 else ""
             regular_text = parts[1] if len(parts) > 1 else text
             
             # Create a left container for icons
             icon_container = tk.Frame(inner_frame, bg=standard_button_bg)
-            icon_container.pack(side=tk.LEFT, padx=(0, 10))  # Add space after the icons
+            icon_container.pack(side=tk.LEFT, padx=(0, 8))
             
             # Add Nvidia icon if requested
             if show_nvidia and nvidia_icon:
@@ -1605,12 +1624,14 @@ class CHIMLauncher(tk.Tk):
             
             # Create emoji label
             if emoji:
+                # Check if emoji contains a star and make it yellow
+                emoji_color = "#FFD700" if "⭐" in emoji else "white"  # Gold color for stars
                 emoji_label = tk.Label(
                     inner_frame, 
                     text=emoji,
                     bg=standard_button_bg,
-                    fg="white",
-                    font=("Trebuchet MS", 12, "bold")
+                    fg=emoji_color,
+                    font=("Trebuchet MS", 11, "bold")
                 )
                 emoji_label.pack(side=tk.LEFT, padx=(0, 0))
             
@@ -1620,34 +1641,30 @@ class CHIMLauncher(tk.Tk):
                 text=regular_text,
                 bg=standard_button_bg,
                 fg="white",
-                font=("Trebuchet MS", 12, "bold")
+                font=("Trebuchet MS", 11, "bold")
             )
-            text_label.pack(side=tk.LEFT, padx=5)  # Added padding around text for spacing
+            text_label.pack(side=tk.LEFT, padx=3)
             
             # Right spacer to push content to the left
             right_spacer = tk.Frame(inner_frame, bg=standard_button_bg)
             right_spacer.pack(side=tk.RIGHT, fill=tk.X, expand=True)
             
             # Bind click events to the entire frame and all children
-            btn_frame.bind("<Button-1>", lambda e: command())
-            inner_frame.bind("<Button-1>", lambda e: command())
-            icon_container.bind("<Button-1>", lambda e: command())
-            right_spacer.bind("<Button-1>", lambda e: command())
+            widgets_to_bind = [btn_frame, inner_frame, icon_container, right_spacer, text_label]
             if emoji:
-                emoji_label.bind("<Button-1>", lambda e: command())
-            text_label.bind("<Button-1>", lambda e: command())
-            
+                widgets_to_bind.append(emoji_label)
             if show_nvidia and nvidia_icon:
-                nvidia_label.bind("<Button-1>", lambda e: command())
+                widgets_to_bind.append(nvidia_label)
             if show_amd and amd_icon:
-                amd_label.bind("<Button-1>", lambda e: command())
+                widgets_to_bind.append(amd_label)
+            
+            for widget in widgets_to_bind:
+                widget.bind("<Button-1>", lambda e: command())
             
             # Apply hover effects to the entire button frame
             def on_enter(e):
-                btn_frame.config(background=standard_button_hover_bg)
-                inner_frame.config(background=standard_button_hover_bg)
-                icon_container.config(background=standard_button_hover_bg)
-                right_spacer.config(background=standard_button_hover_bg)
+                for widget in [btn_frame, inner_frame, icon_container, right_spacer]:
+                    widget.config(background=standard_button_hover_bg)
                 if emoji:
                     emoji_label.config(background=standard_button_hover_bg)
                 text_label.config(background=standard_button_hover_bg)
@@ -1658,10 +1675,8 @@ class CHIMLauncher(tk.Tk):
                 desc_label.config(text=component_descriptions.get(component_key, "No description available."))
             
             def on_leave(e):
-                btn_frame.config(background=standard_button_bg)
-                inner_frame.config(background=standard_button_bg)
-                icon_container.config(background=standard_button_bg)
-                right_spacer.config(background=standard_button_bg)
+                for widget in [btn_frame, inner_frame, icon_container, right_spacer]:
+                    widget.config(background=standard_button_bg)
                 if emoji:
                     emoji_label.config(background=standard_button_bg)
                 text_label.config(background=standard_button_bg)
@@ -1671,77 +1686,105 @@ class CHIMLauncher(tk.Tk):
                     amd_label.config(background=standard_button_bg)
                 desc_label.config(text="Hover over a component below to see its description.")
             
-            btn_frame.bind('<Enter>', on_enter)
-            btn_frame.bind('<Leave>', on_leave)
+            for widget in widgets_to_bind:
+                widget.bind('<Enter>', on_enter)
+                widget.bind('<Leave>', on_leave)
             
-            # Make cursor change to hand when over any part of the button
             btn_frame.bind("<Enter>", lambda e: btn_frame.config(cursor="hand2"))
             btn_frame.bind("<Leave>", lambda e: btn_frame.config(cursor=""))
             
-            # Also bind hover events to inner elements to ensure they propagate properly
-            inner_frame.bind('<Enter>', on_enter)
-            inner_frame.bind('<Leave>', on_leave)
-            icon_container.bind('<Enter>', on_enter)
-            icon_container.bind('<Leave>', on_leave)
-            right_spacer.bind('<Enter>', on_enter)
-            right_spacer.bind('<Leave>', on_leave)
-            if emoji:
-                emoji_label.bind('<Enter>', on_enter)
-                emoji_label.bind('<Leave>', on_leave)
-            text_label.bind('<Enter>', on_enter)
-            text_label.bind('<Leave>', on_leave)
-            
-            if show_nvidia and nvidia_icon:
-                nvidia_label.bind('<Enter>', on_enter)
-                nvidia_label.bind('<Leave>', on_leave)
-            if show_amd and amd_icon:
-                amd_label.bind('<Enter>', on_enter)
-                amd_label.bind('<Leave>', on_leave)
-            
             return btn_frame
+        
+        # Helper function to create section headers
+        def create_section_header(parent, text, row):
+            header_label = tk.Label(
+                parent,
+                text=text,
+                bg="#2C2C2C",
+                fg="#FFD700",  # Gold color
+                font=("Trebuchet MS", 12, "bold"),
+                anchor="w"
+            )
+            header_label.grid(row=row, column=0, columnspan=2, sticky="w", padx=10, pady=(15, 5))
+            return header_label
 
-        # Create the buttons with icons
-        # CUDA - Only NVIDIA
+        # Configure grid columns to have equal weight
+        button_frame.grid_columnconfigure(0, weight=1, uniform="equal")
+        button_frame.grid_columnconfigure(1, weight=1, uniform="equal")
+        
+        current_row = 0
+        
+        # Section: NVIDIA USERS ONLY
+        create_section_header(button_frame, "NVIDIA USERS MUST INSTALL THIS FIRST!", current_row)
+        current_row += 1
+        
+        # CUDA - Only NVIDIA with star
         cuda_button = create_component_button(
-            button_frame, "    💽 CUDA", self.install_cuda, "CUDA", 
-            show_nvidia=True, show_amd=False
+            button_frame, "⭐💽 CUDA", self.install_cuda, "CUDA", 
+            current_row, 0, show_nvidia=True, show_amd=False
         )
+        current_row += 1
         
-        # Minime & TXT2VEC - NVIDIA and AMD
+        # Section: Recommended Extensions
+        create_section_header(button_frame, "Recommended Extensions", current_row)
+        current_row += 1
+        
+        # Minime & TXT2VEC - NVIDIA and AMD with star
         minime_button = create_component_button(
-            button_frame,"🧠Minime&TXT2VEC", self.install_minime_t5, "Minime-T5", 
-            show_nvidia=True, show_amd=True
+            button_frame, "⭐🧠 Minime&TXT2VEC", self.install_minime_t5, "Minime-T5", 
+            current_row, 0, show_nvidia=True, show_amd=True
         )
+        current_row += 1
         
-        # CHIM XTTS - Only NVIDIA
-        xtts_button = create_component_button(
-            button_frame, "     🗣CHIM XTTS", self.install_xtts, "CHIM XTTS", 
-            show_nvidia=True, show_amd=False
-        )
+        # Section: Text-to-Speech Engines
+        create_section_header(button_frame, "Text-to-Speech Engines", current_row)
+        current_row += 1
         
-        # Chatterbox - Only NVIDIA
+        # Chatterbox - Only NVIDIA with star (left column)
         chatterbox_button = create_component_button(
-            button_frame, "     🗣Chatterbox", self.install_chatterbox, "Chatterbox", 
-            show_nvidia=True, show_amd=False
+            button_frame, "⭐🗣 Chatterbox", self.install_chatterbox, "Chatterbox", 
+            current_row, 0, show_nvidia=True, show_amd=False
         )
         
-        # MeloTTS - NVIDIA and AMD
+        # PockeTTS - NVIDIA and AMD with star (right column)
+        pocketts_button = create_component_button(
+            button_frame, "⭐🗣 Pocket-TTS", self.install_pocketts, "PockeTTS",
+            current_row, 1, show_nvidia=True, show_amd=True
+        )
+        current_row += 1
+        
+        # CHIM XTTS - Only NVIDIA (left column)
+        xtts_button = create_component_button(
+            button_frame, "🗣 CHIM XTTS", self.install_xtts, "CHIM XTTS", 
+            current_row, 0, show_nvidia=True, show_amd=False
+        )
+        
+        # MeloTTS - NVIDIA and AMD (right column)
         melotts_button = create_component_button(
-            button_frame, "🗣MeloTTS", self.install_melotts, "MeloTTS", 
-            show_nvidia=True, show_amd=True
+            button_frame, "🗣 MeloTTS", self.install_melotts, "MeloTTS", 
+            current_row, 1, show_nvidia=True, show_amd=True
         )
-                # Piper - NVIDIA and AMD
+        current_row += 1
+        
+        # Piper - NVIDIA and AMD (left column)
         pipertts_button = create_component_button(
-            button_frame, "🗣Piper-TTS", self.install_pipertts, "Piper-TTS", 
-            show_nvidia=True, show_amd=True
+            button_frame, "🗣 Piper-TTS", self.install_pipertts, "Piper-TTS", 
+            current_row, 0, show_nvidia=True, show_amd=True
         )
         
-        # Piper Voice Folder button
+        # Mimic3 - NVIDIA and AMD (right column)
+        mimic3_button = create_component_button(
+            button_frame, "🗣 Mimic3", self.install_mimic3, "Mimic3", 
+            current_row, 1, show_nvidia=True, show_amd=True
+        )
+        current_row += 1
+        
+        # Piper Voice Folder button (spans both columns)
         piper_voices_button = tk.Button(
             button_frame,
             text="📁 Piper Voice Folder",
             command=self.open_piper_voices_folder,
-            bg="#404040",  # Darker gray for secondary button
+            bg="#404040",
             fg="white",
             activebackground="#505050",
             activeforeground="white",
@@ -1749,92 +1792,90 @@ class CHIMLauncher(tk.Tk):
             relief='flat',
             borderwidth=0,
             highlightthickness=0,
-            cursor='hand2',
-            width=25
+            cursor='hand2'
         )
-        piper_voices_button.pack(pady=(2, 5), fill=tk.X, padx=20)  # Smaller top padding, indented
+        piper_voices_button.grid(row=current_row, column=0, columnspan=2, sticky="ew", padx=25, pady=(2, 5))
         self.add_hover_effects(piper_voices_button, "#404040", "#505050")
-
-        # Mimic3 - NVIDIA and AMD
-        mimic3_button = create_component_button(
-            button_frame, "🗣Mimic3", self.install_mimic3, "Mimic3", 
-            show_nvidia=True, show_amd=True
-        )
-
-        # LocalWhisper - NVIDIA and AMD
-        localwhisper_button = create_component_button(
-            button_frame, "🎙LocalWhisper", self.install_localwhisper, "LocalWhisper", 
-            show_nvidia=True, show_amd=True
-        )
-
-        # Parakeet - NVIDIA and AMD
+        current_row += 1
+        
+        # Section: Speech-to-Text Engines
+        create_section_header(button_frame, "Speech-to-Text Engines", current_row)
+        current_row += 1
+        
+        # Parakeet - NVIDIA and AMD with star (left column)
         parakeet_button = create_component_button(
-            button_frame, "🎙Parakeet STT", self.install_parakeet, "Parakeet", 
-            show_nvidia=True, show_amd=True
+            button_frame, "⭐🎙 Parakeet STT", self.install_parakeet, "Parakeet", 
+            current_row, 0, show_nvidia=True, show_amd=True
         )
+        
+        # LocalWhisper - NVIDIA and AMD (right column)
+        localwhisper_button = create_component_button(
+            button_frame, "🎙 LocalWhisper", self.install_localwhisper, "LocalWhisper", 
+            current_row, 1, show_nvidia=True, show_amd=True
+        )
+        current_row += 1
 
         # README Section
         readme_frame = tk.LabelFrame(
-            submenu_window,
-            text="READ THIS!",
+            button_frame,
+            text="Installation Notes",
             bg="#2C2C2C",
             fg="white",
-            font=("Trebuchet MS", 12, "bold")
+            font=("Trebuchet MS", 11, "bold"),
+            padx=10,
+            pady=10
         )
-        readme_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        readme_frame.grid(row=current_row, column=0, columnspan=2, sticky="ew", padx=10, pady=(15, 10))
 
         # NVIDIA Users Section
         nvidia_header = tk.Label(
             readme_frame,
-            text="NVIDIA GPU users:",
+            text="NVIDIA GPU Users:",
             bg="#2C2C2C",
             fg="white",
             font=("Trebuchet MS", 10, "bold"),
             anchor="w"
         )
-        nvidia_header.pack(pady=(10, 0), padx=0, fill="x")
+        nvidia_header.pack(pady=(5, 0), fill="x")
 
-        nvidia_text = (
-            "Install CUDA first! Then any of the other components you wish to use."
-        )
+        nvidia_text = "Install CUDA first! Then whatever components you want to install."
         nvidia_label = tk.Label(
             readme_frame,
             text=nvidia_text,
             bg="#2C2C2C",
             fg="white",
-            wraplength=480,  # Adjust wrap length as needed
+            wraplength=660,
             justify="left",
-            font=("Trebuchet MS", 10),
+            font=("Trebuchet MS", 9),
             anchor="w"
         )
-        nvidia_label.pack(pady=(0, 10), padx=0, fill="x")
+        nvidia_label.pack(pady=(0, 10), fill="x")
 
         # AMD Users Section
         amd_header = tk.Label(
             readme_frame,
-            text="AMD GPU users:",
+            text="AMD/Intel GPU Users:",
             bg="#2C2C2C",
             fg="white",
             font=("Trebuchet MS", 10, "bold"),
             anchor="w"
         )
-        amd_header.pack(pady=(10, 0), padx=0, fill="x")
+        amd_header.pack(pady=(5, 0), fill="x")
 
         amd_text = (
-            "You can only install MeloTTS, Mimic3, Piper-TTS, LocalWhisper and Minime-T5 in CPU mode only! "
-            "This is because AMD cards do not support CUDA. They will run a bit slower."
+            "Install components with the AMD icon. They run in CPU mode (slower but functional)."
         )
         amd_label = tk.Label(
             readme_frame,
             text=amd_text,
             bg="#2C2C2C",
             fg="white",
-            wraplength=480,  # Adjust wrap length as needed
+            wraplength=660,
             justify="left",
-            font=("Trebuchet MS", 10),
+            font=("Trebuchet MS", 9),
             anchor="w"
         )
-        amd_label.pack(pady=(0, 10), padx=0, fill="x")
+        amd_label.pack(pady=(0, 5), fill="x")
 
     def run_command_in_new_window(self, cmd):
         """Safely executes a command in a new window with comprehensive error handling."""
@@ -1891,6 +1932,9 @@ class CHIMLauncher(tk.Tk):
 
     def install_parakeet(self):
         threading.Thread(target=self.run_command_in_new_window, args=('wsl -d DwemerAI4Skyrim3 -u dwemer -- /home/dwemer/parakeet-api-server/ddistro_install.sh',), daemon=True).start()
+
+    def install_pocketts(self):
+        threading.Thread(target=self.run_command_in_new_window, args=('wsl -d DwemerAI4Skyrim3 -u dwemer -- /home/dwemer/pocket-tts/ddistro_install.sh',), daemon=True).start()
  
     def open_debugging_menu(self):
         # Create a new Toplevel window
