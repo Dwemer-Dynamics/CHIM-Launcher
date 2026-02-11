@@ -1940,7 +1940,7 @@ class CHIMLauncher(tk.Tk):
         # Create a new Toplevel window
         debug_window = tk.Toplevel(self)
         debug_window.title("Debugging")
-        debug_window.geometry("440x640")  # Increased height
+        debug_window.geometry("440x800")  # Increased height to accommodate PocketTTS logs
         debug_window.configure(bg="#2C2C2C")
         debug_window.resizable(False, False)
 
@@ -2016,6 +2016,7 @@ class CHIMLauncher(tk.Tk):
         log_view_commands = [
             ("View CHIM XTTS Logs", self.view_xtts_logs),
             ("View Chatterbox Logs", self.view_chatterbox_logs),
+            ("View PocketTTS Logs", self.view_pockettts_logs),
             ("View MeloTTS Logs", self.view_melotts_logs),
             ("View Piper Logs", self.view_piper_logs),
             ("View LocalWhisper Logs", self.view_localwhisper_logs),
@@ -2297,6 +2298,11 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
     def view_chatterbox_logs(self):
         """Opens a new terminal window to view the Chatterbox logs."""
         cmd = 'wsl -d DwemerAI4Skyrim3 -u dwemer -- tail -n 100 -f /home/dwemer/chatterbox/log.txt'
+        threading.Thread(target=self.run_command_in_new_window, args=(cmd,), daemon=True).start()
+    
+    def view_pockettts_logs(self):
+        """Opens a new terminal window to view the PocketTTS logs."""
+        cmd = 'wsl -d DwemerAI4Skyrim3 -u dwemer -- tail -n 100 -f /home/dwemer/pocket-tts/log.txt'
         threading.Thread(target=self.run_command_in_new_window, args=(cmd,), daemon=True).start()
     
     def view_localwhisper_logs(self):
