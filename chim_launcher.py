@@ -233,8 +233,10 @@ class CHIMLauncher(tk.Tk):
         # Add flag for connection status logging - REMOVED
         # self.wsl_connection_reported = False
         self.wsl_server_ready = False # Flag to track if WSL server reported ready
+        self.mcp_enabled_var = tk.BooleanVar(value=True)
 
         self.create_widgets()
+        self.load_mcp_enabled_setting()
 
         # Set the window icon
         self.set_window_icon('CHIM.png') 
@@ -592,6 +594,24 @@ class CHIMLauncher(tk.Tk):
         )
         self.debugging_button.pack(fill=tk.X, pady=5)
         self.add_hover_effects(self.debugging_button, standard_button_bg, standard_button_hover_bg)
+
+        self.mcp_toggle = tk.Checkbutton(
+            server_config_frame,
+            text="Enable MCP Service (default ON)",
+            variable=self.mcp_enabled_var,
+            command=self.save_mcp_enabled_setting,
+            bg="#2C2C2C",
+            fg="white",
+            activebackground="#2C2C2C",
+            activeforeground="white",
+            selectcolor="#3A3A3A",
+            font=("Trebuchet MS", 10, "bold"),
+            anchor="w",
+            relief="flat",
+            highlightthickness=0,
+            cursor="hand2"
+        )
+        self.mcp_toggle.pack(fill=tk.X, pady=(2, 6))
 
         # --- External Links Group --- 
         external_links_frame = tk.LabelFrame(left_frame, text="External Links", **labelframe_style)
@@ -2185,6 +2205,60 @@ class CHIMLauncher(tk.Tk):
         )
         cancel_btn.pack(side=tk.LEFT, padx=5)
         self.add_hover_effects(cancel_btn, '#5E0505', '#4A0404')
+
+    def load_mcp_enabled_setting(self):
+        """Load MCP enabled state from WSL flag file. Default is enabled."""
+        try:
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = 0  # SW_HIDE
+
+            cmd = ["wsl", "-d", "DwemerAI4Skyrim3", "--", "bash", "-lc", "if [ -f /home/dwemer/.mcp_enabled ]; then cat /home/dwemer/.mcp_enabled; else echo 1 > /home/dwemer/.mcp_enabled; echo 1; fi"]
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                startupinfo=startupinfo,
+                creationflags=subprocess.CREATE_NO_WINDOW
+            )
+
+            if result.returncode == 0:
+                value = result.stdout.strip()
+                self.mcp_enabled_var.set(value == "1")
+            else:
+                self.mcp_enabled_var.set(True)
+        except Exception:
+            self.mcp_enabled_var.set(True)
+
+    def save_mcp_enabled_setting(self):
+        """Persist MCP enabled state to WSL flag file."""
+        try:
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = 0  # SW_HIDE
+
+            value = "1" if self.mcp_enabled_var.get() else "0"
+            cmd = [
+                "wsl", "-d", "DwemerAI4Skyrim3", "--", "bash", "-lc",
+                f"echo {value} > /home/dwemer/.mcp_enabled"
+            ]
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                startupinfo=startupinfo,
+                creationflags=subprocess.CREATE_NO_WINDOW
+            )
+
+            if result.returncode == 0:
+                if value == "1":
+                    self.append_output("MCP service enabled. Restart server to apply.\n", "green")
+                else:
+                    self.append_output("MCP service disabled. Restart server to apply.\n", "red")
+            else:
+                self.append_output(f"Failed to save MCP setting: {result.stderr}\n", "red")
+        except Exception as e:
+            self.append_output(f"Failed to save MCP setting: {e}\n", "red")
 
     def get_current_gpu_setting(self):
         """Get the current GPU setting from WSL."""
