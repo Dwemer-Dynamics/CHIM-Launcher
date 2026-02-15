@@ -17,6 +17,7 @@ import urllib.parse
 import urllib.request
 import io # Added for reading request body
 import tkinter.filedialog # Added for save dialog
+import shlex
 
 import socket
 import threading
@@ -891,6 +892,22 @@ class CHIMLauncher(tk.Tk):
                 self.append_output("Update canceled.\n")
                 return
 
+            branch_ready, branch_info, branch_state = self.ensure_herikaserver_attached_branch()
+            if not branch_ready:
+                self.append_output(
+                    "Cannot update from rollback state: failed to switch to a tracked branch.\n",
+                    "red"
+                )
+                if branch_info:
+                    self.append_output(f"{branch_info}\n", "red")
+                return
+
+            if branch_state == "recovered":
+                self.append_output(
+                    f"Detached HEAD detected. Switched to branch '{branch_info}' before update.\n",
+                    "yellow"
+                )
+
             # Run the update command
             startupinfo = subprocess.STARTUPINFO()
             startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
@@ -909,10 +926,21 @@ class CHIMLauncher(tk.Tk):
             self.append_output("Update started.\n")
 
             # Read output line by line
+            branch_error_detected = False
             for line in update_process.stdout:
                 self.append_output(line)
+                lowered = line.lower()
+                if (
+                    "you are not currently on a branch" in lowered
+                    or "please specify which branch you want to merge with" in lowered
+                ):
+                    branch_error_detected = True
 
             update_process.wait()
+
+            if update_process.returncode != 0 or branch_error_detected:
+                self.append_output("Update failed. Fix the git state and try again.\n", "red")
+                return
 
             # Get the current branch for the success message
             current_branch = self.get_current_branch() or "unknown"
@@ -1960,7 +1988,7 @@ class CHIMLauncher(tk.Tk):
         # Create a new Toplevel window
         debug_window = tk.Toplevel(self)
         debug_window.title("Debugging")
-        debug_window.geometry("440x800")  # Increased height to accommodate PocketTTS logs
+        debug_window.geometry("440x900")  # Increased height for rollback action and logs
         debug_window.configure(bg="#2C2C2C")
         debug_window.resizable(False, False)
 
@@ -2017,6 +2045,7 @@ class CHIMLauncher(tk.Tk):
             ("Open Terminal", self.open_terminal),
             ("View Memory Usage", self.view_memory_usage),
             (branch_display, lambda: self.switch_branch(debug_window)),
+            ("Rollback HerikaServer", self.open_rollback_menu),
             ("Clean All Logs", self.clean_logs),
             ("Configure CUDA GPU", self.open_cuda_config_menu),
         ]
@@ -2058,6 +2087,326 @@ class CHIMLauncher(tk.Tk):
         """Opens a new terminal window with the specified command."""
         cmd = 'wsl -d DwemerAI4Skyrim3 -u dwemer -- /usr/local/bin/terminal'
         threading.Thread(target=self.run_command_in_new_window, args=(cmd,), daemon=True).start()
+
+    def run_wsl_bash_capture(self, bash_command):
+        """Run a bash command in WSL and return completed process output."""
+        startupinfo = subprocess.STARTUPINFO()
+        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        startupinfo.wShowWindow = 0  # SW_HIDE
+
+        cmd = [
+            "wsl", "-d", "DwemerAI4Skyrim3", "-u", "dwemer", "--",
+            "bash", "-lc", bash_command
+        ]
+        return subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            startupinfo=startupinfo,
+            creationflags=subprocess.CREATE_NO_WINDOW
+        )
+
+    def ensure_herikaserver_attached_branch(self):
+        """Ensure HerikaServer is on a tracked branch before updates."""
+        result = self.run_wsl_bash_capture(
+            "cd /var/www/html/HerikaServer && "
+            "current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo ''); "
+            "if [ -n \"$current_branch\" ] && [ \"$current_branch\" != \"HEAD\" ]; then "
+            "echo ATTACHED:$current_branch; exit 0; "
+            "fi; "
+            "git checkout -B aiagent >/dev/null 2>&1 || { echo ERROR:CHECKOUT_FAILED; exit 1; }; "
+            "echo RECOVERED:aiagent"
+        )
+
+        output = result.stdout.strip()
+        if result.returncode != 0:
+            error_text = result.stderr.strip() if result.stderr else output
+            return False, error_text, "failed"
+
+        if output.startswith("ATTACHED:"):
+            return True, output.split(":", 1)[1].strip(), "attached"
+        if output.startswith("RECOVERED:"):
+            return True, output.split(":", 1)[1].strip(), "recovered"
+        return False, "Could not determine branch state.", "failed"
+
+    def get_herikaserver_head_info(self):
+        """Get current HerikaServer branch and short SHA."""
+        result = self.run_wsl_bash_capture(
+            "cd /var/www/html/HerikaServer && "
+            "git rev-parse --abbrev-ref HEAD && "
+            "git rev-parse --short HEAD"
+        )
+        if result.returncode != 0:
+            return None, None
+
+        lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+        if len(lines) < 2:
+            return None, None
+        return lines[0], lines[1]
+
+    def get_rollback_targets(self):
+        """Return rollback candidates from version file history."""
+        targets = []
+
+        history_result = self.run_wsl_bash_capture(
+            "cd /var/www/html/HerikaServer && "
+            "git fetch --all --tags --quiet && "
+            "git log --date=short --pretty=format:'%H\t%h\t%cd' -n 40 -- .version_number.txt .version.txt"
+        )
+        if history_result.returncode != 0:
+            return targets
+
+        seen_versions = set()
+        for line in history_result.stdout.splitlines():
+            parts = line.split("\t")
+            if len(parts) < 3:
+                continue
+
+            full_sha, sha_short, commit_date = parts[0], parts[1], parts[2]
+            version_number_result = self.run_wsl_bash_capture(
+                f"cd /var/www/html/HerikaServer && git show {shlex.quote(full_sha)}:.version_number.txt 2>/dev/null | sed -n '1p'"
+            )
+            version_text_result = self.run_wsl_bash_capture(
+                f"cd /var/www/html/HerikaServer && git show {shlex.quote(full_sha)}:.version.txt 2>/dev/null | sed -n '1p'"
+            )
+
+            version_number = version_number_result.stdout.strip() if version_number_result.returncode == 0 else ""
+            version_text = version_text_result.stdout.strip() if version_text_result.returncode == 0 else ""
+
+            # Only show valid, explicit version points.
+            if not version_number:
+                continue
+
+            version_key = f"{version_number}|{version_text}"
+            if version_key in seen_versions:
+                continue
+            seen_versions.add(version_key)
+
+            version_display = version_number
+            targets.append({
+                "type": "version",
+                "ref": full_sha,
+                "sha_short": sha_short,
+                "date": commit_date,
+                "version_number": version_number,
+                "version_text": version_text,
+                "label": f"Version {version_display} - {commit_date}"
+            })
+
+        return targets
+
+    def open_rollback_menu(self):
+        """Open rollback selection modal for HerikaServer."""
+        current_branch, current_sha = self.get_herikaserver_head_info()
+        rollback_targets = self.get_rollback_targets()
+
+        if not rollback_targets:
+            messagebox.showerror(
+                "Rollback Unavailable",
+                "No rollback targets were found in HerikaServer.\n\n"
+                "Confirm git history is available and try again."
+            )
+            return
+
+        rollback_window = tk.Toplevel(self)
+        rollback_window.title("Rollback HerikaServer")
+        rollback_window.geometry("860x620")
+        rollback_window.configure(bg="#2C2C2C")
+        rollback_window.resizable(False, False)
+
+        try:
+            icon_path = get_resource_path('CHIM.png')
+            img = Image.open(icon_path)
+            photo = ImageTk.PhotoImage(img)
+            rollback_window.iconphoto(False, photo)
+        except Exception as e:
+            print(f"Error setting icon: {e}")
+
+        main_frame = tk.Frame(rollback_window, bg="#2C2C2C")
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+
+        tk.Label(
+            main_frame,
+            text="HerikaServer Rollback",
+            bg="#2C2C2C",
+            fg="white",
+            font=("Trebuchet MS", 14, "bold")
+        ).pack(pady=(0, 8))
+
+        branch_text = current_branch if current_branch else "unknown"
+        sha_text = current_sha if current_sha else "unknown"
+        tk.Label(
+            main_frame,
+            text=f"Current: {branch_text} @ {sha_text}",
+            bg="#2C2C2C",
+            fg="#90EE90",
+            font=("Trebuchet MS", 10, "bold")
+        ).pack(pady=(0, 10))
+
+        tk.Label(
+            main_frame,
+            text=(
+                "Select a version rollback point.\n"
+                "Note: database/config compatibility may vary by version."
+            ),
+            bg="#2C2C2C",
+            fg="#CCCCCC",
+            font=("Trebuchet MS", 9),
+            justify=tk.CENTER
+        ).pack(pady=(0, 12))
+
+        list_frame = tk.Frame(main_frame, bg="#2C2C2C")
+        list_frame.pack(fill=tk.BOTH, expand=True)
+
+        scrollbar = tk.Scrollbar(list_frame)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        target_listbox = tk.Listbox(
+            list_frame,
+            bg="#1F1F1F",
+            fg="white",
+            selectbackground="#5E0505",
+            selectforeground="white",
+            font=("Consolas", 10),
+            activestyle="none",
+            yscrollcommand=scrollbar.set
+        )
+        target_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.config(command=target_listbox.yview)
+
+        for target in rollback_targets:
+            target_listbox.insert(tk.END, target["label"])
+        target_listbox.selection_set(0)
+
+        button_frame = tk.Frame(main_frame, bg="#2C2C2C")
+        button_frame.pack(pady=(16, 0))
+
+        button_style = {
+            'bg': '#5E0505',
+            'fg': 'white',
+            'activebackground': '#4A0404',
+            'activeforeground': 'white',
+            'font': ("Trebuchet MS", 11, "bold"),
+            'relief': 'flat',
+            'borderwidth': 0,
+            'highlightthickness': 0,
+            'cursor': 'hand2',
+            'width': 14
+        }
+
+        rollback_btn = tk.Button(
+            button_frame,
+            text="Rollback",
+            command=lambda: self.request_rollback_target(target_listbox, rollback_targets, rollback_window),
+            **button_style
+        )
+        rollback_btn.pack(side=tk.LEFT, padx=6)
+        self.add_hover_effects(rollback_btn, '#5E0505', '#4A0404')
+
+        cancel_btn = tk.Button(
+            button_frame,
+            text="Cancel",
+            command=rollback_window.destroy,
+            **button_style
+        )
+        cancel_btn.pack(side=tk.LEFT, padx=6)
+        self.add_hover_effects(cancel_btn, '#5E0505', '#4A0404')
+
+    def request_rollback_target(self, target_listbox, rollback_targets, rollback_window):
+        """Validate selected target and run rollback in a worker thread."""
+        selected_indices = target_listbox.curselection()
+        if not selected_indices:
+            messagebox.showwarning("No Selection", "Please select a rollback target first.")
+            return
+
+        selected_target = rollback_targets[selected_indices[0]]
+        selected_label = selected_target.get("label", selected_target.get("ref", "unknown"))
+
+        confirmed = messagebox.askyesno(
+            "Confirm Rollback",
+            f"Rollback HerikaServer to:\n\n{selected_label}\n\n"
+            "Warning: Rolling back to much older versions can cause data/config incompatibility\n"
+            "and may result in data loss if migrations or files are not backward compatible.\n\n"
+            "Any local changes will be auto-stashed first.\n"
+            "Continue?"
+        )
+        if not confirmed:
+            return
+
+        threading.Thread(
+            target=self.rollback_herikaserver,
+            args=(selected_target, rollback_window),
+            daemon=True
+        ).start()
+
+    def rollback_herikaserver(self, target, rollback_window):
+        """Rollback HerikaServer to selected target reference."""
+        try:
+            target_ref = target.get("ref")
+            if not target_ref:
+                self.append_output("Rollback failed: invalid target reference.\n", "red")
+                return
+
+            self.append_output("Starting HerikaServer rollback...\n")
+            self.append_output(f"Target: {target.get('label', target_ref)}\n")
+            self.append_output(
+                "Warning: DB/config compatibility can vary across versions.\n",
+                "yellow"
+            )
+
+            target_ref_safe = shlex.quote(target_ref)
+            verify_ref_safe = shlex.quote(f"{target_ref}^{{commit}}")
+            stash_message = datetime.datetime.now().strftime(
+                "Auto-stash before rollback %Y-%m-%d %H:%M:%S"
+            )
+            stash_message_safe = shlex.quote(stash_message)
+
+            rollback_cmd = [
+                "wsl", "-d", "DwemerAI4Skyrim3", "-u", "dwemer", "--",
+                "bash", "-lc",
+                "set -e; "
+                "cd /var/www/html/HerikaServer; "
+                "git rev-parse --is-inside-work-tree >/dev/null; "
+                "git fetch --all --tags; "
+                f"git rev-parse --verify {verify_ref_safe} >/dev/null; "
+                f"git stash push -u -m {stash_message_safe} >/dev/null 2>&1 || true; "
+                f"git checkout --detach {target_ref_safe}; "
+                "echo 'ROLLBACK_HEAD:'$(git rev-parse --short HEAD)"
+            ]
+
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = 0  # SW_HIDE
+
+            process = subprocess.Popen(
+                rollback_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                startupinfo=startupinfo,
+                creationflags=subprocess.CREATE_NO_WINDOW
+            )
+
+            rolled_back_sha = None
+            for line in process.stdout:
+                output_line = line.rstrip("\n")
+                if output_line.startswith("ROLLBACK_HEAD:"):
+                    rolled_back_sha = output_line.split(":", 1)[1].strip()
+                self.append_output(f"{output_line}\n")
+
+            process.wait()
+            if process.returncode != 0:
+                self.append_output("Rollback failed. Review output above for details.\n", "red")
+                return
+
+            final_sha = rolled_back_sha if rolled_back_sha else "unknown"
+            self.append_output(f"Rollback completed successfully. HEAD: {final_sha}\n", "green")
+
+            self.after(0, rollback_window.destroy)
+            self.after(1000, lambda: threading.Thread(target=self.check_for_updates, daemon=True).start())
+            self.after(1000, lambda: threading.Thread(target=self.check_nexus_version, daemon=True).start())
+        except Exception as e:
+            self.append_output(f"Rollback error: {str(e)}\n", "red")
 
     def open_cuda_config_menu(self):
         """Opens a window to configure CUDA GPU selection."""
@@ -3209,6 +3558,14 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
 
     def update_all(self):
         """Perform a complete update of both distro and server components."""
+        confirm = messagebox.askyesno(
+            "Update System",
+            "This will update both the CHIM distro and server components. Are you sure?"
+        )
+        if not confirm:
+            self.append_output("Update canceled.\n")
+            return
+
         # Check if on aiagent branch with misaligned versions
         current_branch = self.get_current_branch()
         if current_branch == "aiagent":
@@ -3224,11 +3581,21 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
 
     def update_all_thread(self):
         try:
-            # First confirm the update with the user
-            confirm = messagebox.askyesno("Update System", "This will update both the CHIM distro and server components. Are you sure?")
-            if not confirm:
-                self.append_output("Update canceled.\n")
+            branch_ready, branch_info, branch_state = self.ensure_herikaserver_attached_branch()
+            if not branch_ready:
+                self.append_output(
+                    "Cannot run full update from rollback state: failed to switch to a tracked branch.\n",
+                    "red"
+                )
+                if branch_info:
+                    self.append_output(f"{branch_info}\n", "red")
                 return
+
+            if branch_state == "recovered":
+                self.append_output(
+                    f"Detached HEAD detected. Switched to branch '{branch_info}' before full update.\n",
+                    "yellow"
+                )
 
             # Update status to indicate we're working
             self.after(0, lambda: self.update_status_label.config(
@@ -3270,6 +3637,7 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
             distro_update_complete = False
             server_update_started = False
             server_update_complete = False
+            branch_error_detected = False
             
             # Read output line by line
             for line in update_process.stdout:
@@ -3282,6 +3650,13 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
                 
                 # Output the line
                 self.append_output(line)
+
+                lowered = line.lower()
+                if (
+                    "you are not currently on a branch" in lowered
+                    or "please specify which branch you want to merge with" in lowered
+                ):
+                    branch_error_detected = True
                 
                 # Check if server update is complete (look for common completion messages)
                 if server_update_started and ("Successfully" in line or "Completed" in line):
@@ -3291,7 +3666,7 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
             update_process.wait()
             
             # Check the final state
-            if update_process.returncode == 0 and distro_update_complete:
+            if update_process.returncode == 0 and distro_update_complete and not branch_error_detected:
                 # Get the current branch for the success message
                 current_branch = self.get_current_branch() or "unknown"
                 
@@ -3306,6 +3681,8 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
                 # Something went wrong
                 if not distro_update_complete:
                     self.append_output("Distro update did not complete successfully.\n", "red")
+                elif branch_error_detected:
+                    self.append_output("Server update failed: repository is not on a branch.\n", "red")
                 elif not server_update_complete:
                     self.append_output("Server update may not have completed successfully.\n", "red")
                 
