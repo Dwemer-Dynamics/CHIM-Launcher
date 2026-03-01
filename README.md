@@ -1,7 +1,7 @@
-# CHIM Launcher
+# Dwemer Distro Launcher
 
 ## Description
-CHIM Launcher is a Python-compiled executable designed to run the DwemerDistro for the CHIM Skyrim mod. If you prefer not to run pre-compiled executables for security reasons, you can compile the `.exe` yourself by following the instructions below.
+Dwemer Distro Launcher is a Python-compiled executable designed to run the Dwemer Distro for Skyrim. If you prefer not to run pre-compiled executables for security reasons, you can compile the `.exe` yourself by following the instructions below.
 
 It also acts as a port proxy (127.0.0.1:7513) between Skyrim and the DwemerDistro.
 
@@ -25,10 +25,10 @@ pip install Pillow requests
 
 pip install pyinstaller
 
-python -m PyInstaller --onefile --windowed --icon=CHIM.ico --name CHIM --add-data "CHIM.png;." --add-data "CHIM_title.png;." --add-data "nvidia.png;." --add-data "amd.png;." --exclude-module ImageSequence --upx-dir upx-4.2.4-win64 --version-file=file_version_info.txt chim_launcher.py
+python -m PyInstaller --onefile --windowed --icon=DwemerDistro.ico --name DwemerDistro --add-data "DwemerDistro.png;." --add-data "dd_title.png;." --add-data "nvidia.png;." --add-data "amd.png;." --exclude-module ImageSequence --upx-dir upx-4.2.4-win64 --version-file=file_version_info.txt chim_launcher.py
 ```
 
-After the compilation process completes, you'll find the CHIM.exe file in the dist directory within your project folder.
+After the compilation process completes, you'll find the DwemerDistro.exe file in the dist directory within your project folder.
 
 **Note**: The `--version-file` parameter includes license and version information to help reduce antivirus false positives.
 
@@ -75,7 +75,7 @@ If your antivirus software flags the compiled executable as suspicious, this is 
 - **File system operations**: Opening folders and managing files
 
 ### Solutions:
-1. **Add an exception** in your antivirus software for the CHIM.exe file
+1. **Add an exception** in your antivirus software for the DwemerDistro.exe file
 2. **Use Method 2** (running directly with Python) to avoid compilation entirely
 3. **Try alternative compilation methods** like cx_Freeze
 4. **Compile yourself** using the provided instructions to ensure the source is trusted

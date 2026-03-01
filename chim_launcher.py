@@ -24,6 +24,8 @@ import threading
 import select
 import sys
 
+CHIM_LAUNCHER_VERSION = "2.5.1.0"
+
 class SimpleTCPProxy(threading.Thread):
     def __init__(self, listen_addr, target_addr_func, launcher_instance):
         super().__init__(daemon=True)
@@ -192,10 +194,10 @@ def get_resource_path(filename):
     return os.path.join(base_path, filename)
 
 
-class CHIMLauncher(tk.Tk):
+class DwemerDistroLauncher(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("CHIM")
+        self.title("Dwemer Distro")
         # Make window wider and taller, disable resizing
         self.geometry("880x950") 
         self.configure(bg="#2C2C2C")
@@ -240,7 +242,7 @@ class CHIMLauncher(tk.Tk):
         self.load_mcp_enabled_setting()
 
         # Set the window icon
-        self.set_window_icon('CHIM.png') 
+        self.set_window_icon('DwemerDistro.png') 
 
         # Bind the window close event to on_close method
         self.protocol("WM_DELETE_WINDOW", self.on_close)
@@ -442,7 +444,7 @@ class CHIMLauncher(tk.Tk):
 
         # --- Content for Left Frame --- 
         # Load the image
-        image_path = get_resource_path('CHIM_title.png')
+        image_path = get_resource_path('dd_title.png')
         try:
             image = Image.open(image_path)
             photo = ImageTk.PhotoImage(image)
@@ -457,7 +459,7 @@ class CHIMLauncher(tk.Tk):
         else:
             title_label = tk.Label(
                 left_frame,
-                text="CHIM",
+                text="Dwemer Distro",
                 fg="white",
                 bg="#2C2C2C",
                 font=("Trebuchet MS", 24)
@@ -536,10 +538,10 @@ class CHIMLauncher(tk.Tk):
         self.update_button.pack(fill=tk.X, pady=5)
         self.add_hover_effects(self.update_button, standard_button_bg, standard_button_hover_bg)
 
-        # Create and pack the combined CHIM Server version and update status label
+        # Create and pack the combined Dwemer Distro Server version and update status label
         self.update_status_label = tk.Label(
             server_updates_frame,
-            text="CHIM Server: ...",
+            text="Dwemer Distro Server: ...",
             fg="white",
             bg="#2C2C2C",
             font=("Trebuchet MS", 10)
@@ -563,7 +565,7 @@ class CHIMLauncher(tk.Tk):
         self.open_folder_button = tk.Button(
             server_config_frame, # Put in correct frame
             text="Open Server Folder",
-            command=self.open_chim_server_folder,
+            command=self.open_server_folder,
             **button_style
         )
         self.open_folder_button.pack(fill=tk.X, pady=5)
@@ -887,7 +889,7 @@ class CHIMLauncher(tk.Tk):
     def update_wsl_thread(self):
         try:
             # Confirm update with the user
-            confirm = messagebox.askyesno("Update Server", "This will update the CHIM server. Are you sure?")
+            confirm = messagebox.askyesno("Update Server", "This will update the Dwemer Distro server. Are you sure?")
             if not confirm:
                 self.append_output("Update canceled.\n")
                 return
@@ -968,7 +970,7 @@ class CHIMLauncher(tk.Tk):
     def update_distro_thread(self):
         try:
             # Confirm update with the user
-            confirm = messagebox.askyesno("Update Distro", "This will update the CHIM distro. Are you sure?")
+            confirm = messagebox.askyesno("Update Distro", "This will update the Dwemer Distro. Are you sure?")
             if not confirm:
                 self.append_output("Distro update canceled.\n")
                 return
@@ -1449,11 +1451,11 @@ class CHIMLauncher(tk.Tk):
         cmd = 'wsl -d DwemerAI4Skyrim3 -u dwemer -- /usr/local/bin/conf_services'
         self.run_command_in_new_window(cmd)
 
-    def open_chim_server_folder(self):
-        threading.Thread(target=self.open_chim_server_folder_thread, daemon=True).start()
+    def open_server_folder(self):
+        threading.Thread(target=self.open_server_folder_thread, daemon=True).start()
 
-    def open_chim_server_folder_thread(self):
-        """Opens the CHIM server folder using the most compatible method available."""
+    def open_server_folder_thread(self):
+        """Opens the Dwemer Distro server folder using the most compatible method available."""
         folder_path = r'\\wsl.localhost\DwemerAI4Skyrim3\var\www\html\HerikaServer'
         
         try:
@@ -1518,9 +1520,9 @@ class CHIMLauncher(tk.Tk):
         submenu_window.geometry("720x880")  
         submenu_window.configure(bg="#2C2C2C")
         submenu_window.resizable(False, False)
-        # Set the window icon to CHIM.png
+        # Set the window icon to DwemerDistro.png
         try:
-            icon_path = get_resource_path('CHIM.png')  # Ensure CHIM.png exists
+            icon_path = get_resource_path('DwemerDistro.png')  # Ensure DwemerDistro.png exists
             img = Image.open(icon_path)
             photo = ImageTk.PhotoImage(img)  # Convert to Tkinter-compatible photo
             submenu_window.iconphoto(False, photo)  # Set the icon
@@ -1616,14 +1618,14 @@ class CHIMLauncher(tk.Tk):
 
         # --- Descriptions Dictionary ---
         component_descriptions = {
-            "CUDA": "Nvidia's special software that lets AI tools work with their graphics cards, without it programs like CHIM XTTS won't work. Install this first if you have a Nvidia GPU.",
-            "CHIM XTTS": "A High-quality and realistic Text-to-Speech (TTS) service. Requires an Nvidia GPU with sufficient VRAM (4GB+) and CUDA installed. Provides immersive NPC voices with the ability to generate new ones automatically ingame.\n\nNOTE: Uses the same port as Chatterbox - only one can be enabled at a time.\n\nVRAM Usage: 4GB",
-            "Chatterbox": "High-quality multilingual Text-to-Speech (TTS) service with voice cloning capabilities. Requires an Nvidia GPU with CUDA installed.\n\nNOTE: Uses the same port as CHIM XTTS - only one can be enabled at a time.\n\nVRAM Usage: ~4GB",
+            "CUDA": "Nvidia's special software that lets AI tools work with their graphics cards, without it programs like Dwemer Distro XTTS won't work. Install this first if you have a Nvidia GPU.",
+            "Dwemer Distro XTTS": "A High-quality and realistic Text-to-Speech (TTS) service. Requires an Nvidia GPU with sufficient VRAM (4GB+) and CUDA installed. Provides immersive NPC voices with the ability to generate new ones automatically ingame.\n\nNOTE: Uses the same port as Chatterbox - only one can be enabled at a time.\n\nVRAM Usage: 4GB",
+            "Chatterbox": "High-quality multilingual Text-to-Speech (TTS) service with voice cloning capabilities. Requires an Nvidia GPU with CUDA installed.\n\nNOTE: Uses the same port as Dwemer Distro XTTS - only one can be enabled at a time.\n\nVRAM Usage: ~4GB",
             "MeloTTS": "A fast, and efficient Text-to-Speech (TTS) service ideal for low-end systems. Runs efficiently on CPU, making it a great option for systems without Nvidia GPUs or for lower resource usage.\n\nVRAM Usage: Under 1GB",
-            "Minime-T5": "A tiny helper Large Language Model (LLM). Used by CHIM to improve AI NPC responses. Also comes with TXT2VEC, an efficent vector service. Runs on GPU or CPU efficently.\n\nVRAM Usage: 400MB",
+            "Minime-T5": "A tiny helper Large Language Model (LLM). Used by Dwemer Distro to improve AI NPC responses. Also comes with TXT2VEC, an efficent vector service. Runs on GPU or CPU efficently.\n\nVRAM Usage: 400MB",
             "Mimic3": "An older but fast Text-to-Speech (TTS) service. Does not come with Skyrim voices.\n\nVRAM Usage: Under Less than 1GB",
             "Piper-TTS": "MUST INSTALL VOICES SEPARATELY. A fast and efficient Text-to-Speech (TTS) service ideal for low-end systems. Runs fast on CPU, making it a great option for systems without Nvidia GPUs or for lower resource usage. \n\nVRAM Usage: Under 1GB",
-            "PockeTTS": "A CPU-based Text-to-Speech (TTS) service using a flow-based language model. Runs on CPU, making it compatible with both AMD and NVIDIA systems. No GPU required.\n\nNOTE: Uses the same port as CHIM XTTS and Chatterbox (8020) - only one can be enabled at a time.\n\nVRAM Usage: None (CPU only)",
+            "PockeTTS": "A CPU-based Text-to-Speech (TTS) service using a flow-based language model. Runs on CPU, making it compatible with both AMD and NVIDIA systems. No GPU required.\n\nNOTE: Uses the same port as Dwemer Distro XTTS and Chatterbox (8020) - only one can be enabled at a time.\n\nVRAM Usage: None (CPU only)",
             "LocalWhisper": "Offline Speech-to-Text (STT) service based on OpenAI's Whisper. Allows you to use your microphone to chat with NPCs.\n\nVRAM Usage: 1-2GB",
             "Parakeet": "High-performance offline Speech-to-Text (STT) service using NVIDIA's Parakeet TDT model. Supports GPU (best quality) and CPU modes.\n\nVRAM Usage: 1-2GB"
         }
@@ -1801,9 +1803,9 @@ class CHIMLauncher(tk.Tk):
         )
         current_row += 1
         
-        # CHIM XTTS - Only NVIDIA (left column)
+        # Dwemer Distro XTTS - Only NVIDIA (left column)
         xtts_button = create_component_button(
-            button_frame, "🗣 CHIM XTTS", self.install_xtts, "CHIM XTTS", 
+            button_frame, "🗣 Dwemer Distro XTTS", self.install_xtts, "Dwemer Distro XTTS", 
             current_row, 0, show_nvidia=True, show_amd=False
         )
         
@@ -1992,9 +1994,9 @@ class CHIMLauncher(tk.Tk):
         debug_window.configure(bg="#2C2C2C")
         debug_window.resizable(False, False)
 
-        # Set the window icon to CHIM.png (optional)
+        # Set the window icon to DwemerDistro.png (optional)
         try:
-            icon_path = get_resource_path('CHIM.png')  # Ensure CHIM.png exists
+            icon_path = get_resource_path('DwemerDistro.png')  # Ensure DwemerDistro.png exists
             img = Image.open(icon_path)
             photo = ImageTk.PhotoImage(img)  # Convert to Tkinter-compatible photo
             debug_window.iconphoto(False, photo)  # Set the icon
@@ -2063,7 +2065,7 @@ class CHIMLauncher(tk.Tk):
         # --- View Logs Section ---
         tk.Label(debug_button_frame, text="--- View Logs ---", bg="#2C2C2C", fg="white", font=("Trebuchet MS", 10, "bold")).pack(pady=(0, 5))
         log_view_commands = [
-            ("View CHIM XTTS Logs", self.view_xtts_logs),
+            ("View Dwemer Distro XTTS Logs", self.view_xtts_logs),
             ("View Chatterbox Logs", self.view_chatterbox_logs),
             ("View PocketTTS Logs", self.view_pockettts_logs),
             ("View MeloTTS Logs", self.view_melotts_logs),
@@ -2215,7 +2217,7 @@ class CHIMLauncher(tk.Tk):
         rollback_window.resizable(False, False)
 
         try:
-            icon_path = get_resource_path('CHIM.png')
+            icon_path = get_resource_path('DwemerDistro.png')
             img = Image.open(icon_path)
             photo = ImageTk.PhotoImage(img)
             rollback_window.iconphoto(False, photo)
@@ -2419,7 +2421,7 @@ class CHIMLauncher(tk.Tk):
 
         # Set the window icon
         try:
-            icon_path = get_resource_path('CHIM.png')
+            icon_path = get_resource_path('DwemerDistro.png')
             img = Image.open(icon_path)
             photo = ImageTk.PhotoImage(img)
             cuda_window.iconphoto(False, photo)
@@ -2651,8 +2653,8 @@ class CHIMLauncher(tk.Tk):
             if gpu_value == "all":
                 config_content = """#!/bin/bash
 # CUDA Device Configuration
-# This file is auto-generated by CHIM Launcher and will NOT be overwritten by updates
-# Users can configure their GPU selection in the CHIM Launcher UI
+# This file is auto-generated by Dwemer Distro Launcher and will NOT be overwritten by updates
+# Users can configure their GPU selection in the Dwemer Distro Launcher UI
 
 # Set which GPU device to use (0 = first GPU, 1 = second GPU, etc.)
 # Leave empty or unset to use all available GPUs
@@ -2662,8 +2664,8 @@ class CHIMLauncher(tk.Tk):
             else:
                 config_content = f"""#!/bin/bash
 # CUDA Device Configuration
-# This file is auto-generated by CHIM Launcher and will NOT be overwritten by updates
-# Users can configure their GPU selection in the CHIM Launcher UI
+# This file is auto-generated by Dwemer Distro Launcher and will NOT be overwritten by updates
+# Users can configure their GPU selection in the Dwemer Distro Launcher UI
 
 # Set which GPU device to use (0 = first GPU, 1 = second GPU, etc.)
 # Currently set to: GPU {gpu_value}
@@ -2714,7 +2716,7 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
         threading.Thread(target=self.run_command_in_new_window, args=(cmd,), daemon=True).start()
 
     def view_xtts_logs(self):
-        """Opens a new terminal window to view the CHIM XTTS logs."""
+        """Opens a new terminal window to view the Dwemer Distro XTTS logs."""
         cmd = 'wsl -d DwemerAI4Skyrim3 -u dwemer -- tail -n 100 -f /home/dwemer/xtts-api-server/log.txt'
         threading.Thread(target=self.run_command_in_new_window, args=(cmd,), daemon=True).start()
     
@@ -3056,7 +3058,7 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
         update_label_config = lambda config: self.after(0, self.update_status_label.config, config)
 
         # Initial state while checking
-        update_label_config({"text": "CHIM Server: Checking...", "fg": "white"})
+        update_label_config({"text": "Dwemer Distro Server: Checking...", "fg": "white"})
 
         # Start threads to get versions and branch concurrently
         # Use date-based version (.version.txt) for server update check
@@ -3099,19 +3101,19 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
             comparison = self.compare_versions(current_version[0], git_version[0])
             if comparison < 0:
                 # Update available - GitHub has newer server code
-                final_text = f"CHIM Server{branch_text}: Update Available [{version_display}]"
+                final_text = f"Dwemer Distro Server{branch_text}: Update Available [{version_display}]"
                 text_color = "red"
             else:
                 # Up-to-date - server code matches GitHub
-                final_text = f"CHIM Server{branch_text}: Fully Updated [{version_display}]"
+                final_text = f"Dwemer Distro Server{branch_text}: Fully Updated [{version_display}]"
                 text_color = "lime green"
         elif current_version[0]:
             # Have local version but no git version
-            final_text = f"CHIM Server{branch_text}: [{version_display}]"
+            final_text = f"Dwemer Distro Server{branch_text}: [{version_display}]"
             text_color = "lime green"
         else:
             # Could not retrieve version information
-            final_text = f"CHIM Server{branch_text}: [N/A]"
+            final_text = f"Dwemer Distro Server{branch_text}: [N/A]"
             text_color = "yellow" # Use yellow for check failure
             
         # Update the label with final text and color
@@ -3122,7 +3124,7 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
         # Show a warning message before proceeding
         warning = messagebox.askokcancel(
             "Diagnostic Information Warning", 
-            "Heads Up! Information generated will include the latest interactions you have had with CHIM.\n\nDo you want to continue?",
+            "Heads Up! Information generated will include the latest interactions you have had with Dwemer Distro.\n\nDo you want to continue?",
             icon=messagebox.WARNING
         )
         
@@ -3560,7 +3562,7 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
         """Perform a complete update of both distro and server components."""
         confirm = messagebox.askyesno(
             "Update System",
-            "This will update both the CHIM distro and server components. Are you sure?"
+            "This will update both the Dwemer Distro and server components. Are you sure?"
         )
         if not confirm:
             self.append_output("Update canceled.\n")
@@ -3645,7 +3647,7 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
                 if "=====MARKER:BEGIN_SERVER_UPDATE=====" in line:
                     distro_update_complete = True
                     server_update_started = True
-                    self.append_output("\nSTEP 2: CHIM Server & Components Update\n", "green")
+                    self.append_output("\nSTEP 2: Dwemer Distro Server & Components Update\n", "green")
                     continue  # Skip the marker line itself
                 
                 # Output the line
@@ -3687,7 +3689,7 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
                     self.append_output("Server update may not have completed successfully.\n", "red")
                 
                 self.after(0, lambda: self.update_status_label.config(
-                    text="CHIM Server: Update may have issues - see log",
+                    text="Dwemer Distro Server: Update may have issues - see log",
                     fg="red"
                 ))
                 
@@ -3696,7 +3698,7 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
             import traceback
             self.append_output(f"Traceback: {traceback.format_exc()}\n", "red")
             self.after(0, lambda: self.update_status_label.config(
-                text="CHIM Server: Update error - see log",
+                text="Dwemer Distro Server: Update error - see log",
                 fg="red"
             ))
         finally:
@@ -3705,5 +3707,5 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
             self.after(2000, lambda: threading.Thread(target=self.check_nexus_version, daemon=True).start())
 
 if __name__ == "__main__":
-    app = CHIMLauncher()
+    app = DwemerDistroLauncher()
     app.mainloop()
