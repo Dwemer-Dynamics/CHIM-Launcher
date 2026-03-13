@@ -134,10 +134,26 @@ class DiscoveryHTTPServer(threading.Thread):
             
             # Check if it's a GET /discover request
             if 'GET /discover' in request:
+                # Parse query params from the request line.
+                # Backward compatible default remains skyrim.
+                game = 'skyrim'
+                request_line = request.splitlines()[0] if request else ''
+                request_parts = request_line.split(' ')
+                if len(request_parts) >= 2:
+                    parsed_url = urllib.parse.urlparse(request_parts[1])
+                    params = urllib.parse.parse_qs(parsed_url.query)
+                    game_values = params.get('game', [])
+                    if game_values:
+                        game = game_values[0].strip().lower()
+
+                target_port = 8081
+                if game == 'kenshi' or game == 'stobe':
+                    target_port = 8083
+
                 # Get WSL IP
                 wsl_ip = self.launcher.get_wsl_ip(force_refresh=False)
                 if wsl_ip:
-                    response_body = f"{wsl_ip}:8081"
+                    response_body = f"{wsl_ip}:{target_port}"
                     response = (
                         "HTTP/1.1 200 OK\r\n"
                         "Content-Type: text/plain\r\n"
@@ -237,6 +253,8 @@ class DwemerDistroLauncher(tk.Tk):
         # self.wsl_connection_reported = False
         self.wsl_server_ready = False # Flag to track if WSL server reported ready
         self.mcp_enabled_var = tk.BooleanVar(value=True)
+        self.update_herikaserver_var = tk.BooleanVar(value=True)
+        self.update_target_branch_var = tk.StringVar(value="aiagent")
 
         self.create_widgets()
         self.load_mcp_enabled_setting()
@@ -528,15 +546,33 @@ class DwemerDistroLauncher(tk.Tk):
         server_updates_frame = tk.LabelFrame(left_frame, text="Updater", **labelframe_style)
         server_updates_frame.pack(pady=10, padx=5, fill=tk.X)
 
-        # Replace separate update buttons with a single Update button
+        update_controls_frame = tk.Frame(server_updates_frame, bg="#2C2C2C")
+        update_controls_frame.pack(fill=tk.X, pady=5)
+        update_controls_frame.grid_columnconfigure(0, weight=9)
+        update_controls_frame.grid_columnconfigure(1, weight=1)
+
         self.update_button = tk.Button(
-            server_updates_frame,
+            update_controls_frame,
             text="Update",
             command=self.update_all,
             **button_style
         )
-        self.update_button.pack(fill=tk.X, pady=5)
+        self.update_button.grid(row=0, column=0, sticky="ew", padx=(0, 4))
         self.add_hover_effects(self.update_button, standard_button_bg, standard_button_hover_bg)
+
+        settings_button_style = button_style.copy()
+        settings_button_style.update({
+            'font': ("Trebuchet MS", 14, "bold"),
+            'width': 2
+        })
+        self.update_settings_button = tk.Button(
+            update_controls_frame,
+            text="\u2699",
+            command=self.open_update_settings_menu,
+            **settings_button_style
+        )
+        self.update_settings_button.grid(row=0, column=1, sticky="ew")
+        self.add_hover_effects(self.update_settings_button, standard_button_bg, standard_button_hover_bg)
 
         # Create and pack the combined Dwemer Distro Server version and update status label
         self.update_status_label = tk.Label(
@@ -637,20 +673,6 @@ class DwemerDistroLauncher(tk.Tk):
             'highlightthickness': 0,
             'cursor': 'hand2'
         }
-
-        # GitHub Button
-        github_bg = "#20661B" # Dark Green
-        github_hover_bg = "#154411" # Darker Green
-        github_style = base_link_button_style.copy()
-        github_style.update({'bg': github_bg, 'activebackground': github_hover_bg})
-        github_button = tk.Button(
-            inner_link_frame, 
-            text="GitHub", # Icon removed
-            command=lambda: webbrowser.open_new("https://github.com/abeiro/HerikaServer/tree/aiagent"),
-            **github_style
-        )
-        github_button.pack(side=tk.LEFT, pady=5, padx=5, anchor=tk.CENTER)
-        self.add_hover_effects(github_button, github_bg, github_hover_bg) # Pass colors to hover handler
 
         # Wiki Button
         wiki_bg = "#808080" # Grey
@@ -1456,7 +1478,7 @@ class DwemerDistroLauncher(tk.Tk):
 
     def open_server_folder_thread(self):
         """Opens the Dwemer Distro server folder using the most compatible method available."""
-        folder_path = r'\\wsl.localhost\DwemerAI4Skyrim3\var\www\html\HerikaServer'
+        folder_path = r'\\wsl.localhost\DwemerAI4Skyrim3\var\www\html'
         
         try:
             # Primary method: Use os.startfile() - less suspicious to antivirus
@@ -2037,18 +2059,12 @@ class DwemerDistroLauncher(tk.Tk):
         self.add_hover_effects(generate_diagnostics_btn, standard_button_bg, standard_button_hover_bg)
         ttk.Separator(debug_button_frame, orient='horizontal').pack(fill='x', pady=10) # Separator
 
-        # Get current branch for the button text
-        current_branch = self.get_current_branch()
-        branch_display = f"Switch Branch (Current: {current_branch})" if current_branch else "Switch Branch"
-
         # --- Actions Section ---
         tk.Label(debug_button_frame, text="--- Distro Actions ---", bg="#2C2C2C", fg="white", font=("Trebuchet MS", 10, "bold")).pack(pady=(0, 5))
         action_commands = [
             ("Open Terminal", self.open_terminal),
             ("View Memory Usage", self.view_memory_usage),
-            (branch_display, lambda: self.switch_branch(debug_window)),
-            ("Rollback HerikaServer", self.open_rollback_menu),
-            ("Clean All Logs", self.clean_logs),
+            ("Rollback", self.open_rollback_menu),
             ("Configure CUDA GPU", self.open_cuda_config_menu),
         ]
         for text, command in action_commands:
@@ -2073,6 +2089,7 @@ class DwemerDistroLauncher(tk.Tk):
             ("View LocalWhisper Logs", self.view_localwhisper_logs),
             ("View Parakeet Logs", self.view_parakeet_logs),
             ("View Apache Logs", self.view_apacheerror_logs),
+            ("Clean All Logs", self.clean_logs),
         ]
         for text, command in log_view_commands:
             btn = tk.Button(
@@ -3558,19 +3575,183 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
         except:
             pass
 
+    def open_update_settings_menu(self):
+        """Open settings for updater behavior and HerikaServer branch selection."""
+        settings_window = tk.Toplevel(self)
+        settings_window.title("Update Settings")
+        settings_window.geometry("390x220")
+        settings_window.configure(bg="#2C2C2C")
+        settings_window.resizable(False, False)
+        settings_window.transient(self)
+        settings_window.grab_set()
+
+        content_frame = tk.Frame(settings_window, bg="#2C2C2C")
+        content_frame.pack(fill=tk.BOTH, expand=True, padx=12, pady=12)
+
+        current_branch = self.get_current_branch()
+        if current_branch in ("aiagent", "dev"):
+            self.update_target_branch_var.set(current_branch)
+
+        tk.Checkbutton(
+            content_frame,
+            text="Include HerikaServer in Update",
+            variable=self.update_herikaserver_var,
+            bg="#2C2C2C",
+            fg="white",
+            activebackground="#2C2C2C",
+            activeforeground="white",
+            selectcolor="#2C2C2C",
+            font=("Trebuchet MS", 10),
+            anchor="w",
+            cursor="hand2"
+        ).pack(fill=tk.X, pady=(0, 12))
+
+        tk.Label(
+            content_frame,
+            text="HerikaServer Branch",
+            bg="#2C2C2C",
+            fg="white",
+            font=("Trebuchet MS", 10, "bold"),
+            anchor="w"
+        ).pack(fill=tk.X)
+
+        branch_row = tk.Frame(content_frame, bg="#2C2C2C")
+        branch_row.pack(fill=tk.X, pady=(5, 12))
+
+        branch_dropdown = ttk.Combobox(
+            branch_row,
+            textvariable=self.update_target_branch_var,
+            values=["aiagent", "dev"],
+            state="readonly",
+            width=12
+        )
+        branch_dropdown.pack(side=tk.LEFT)
+
+        button_frame = tk.Frame(content_frame, bg="#2C2C2C")
+        button_frame.pack(fill=tk.X)
+
+        button_style = {
+            'bg': "#5E0505",
+            'fg': "white",
+            'activebackground': "#4A0404",
+            'activeforeground': "white",
+            'font': ("Trebuchet MS", 10, "bold"),
+            'relief': 'flat',
+            'borderwidth': 0,
+            'highlightthickness': 0,
+            'cursor': 'hand2'
+        }
+
+        def switch_selected_branch():
+            target_branch = self.update_target_branch_var.get().strip().lower()
+            threading.Thread(
+                target=self.switch_herikaserver_branch,
+                args=(target_branch,),
+                daemon=True
+            ).start()
+
+        switch_button = tk.Button(
+            branch_row,
+            text="Switch Branch",
+            command=switch_selected_branch,
+            **button_style
+        )
+        switch_button.pack(side=tk.LEFT, padx=(8, 0))
+        self.add_hover_effects(switch_button, "#5E0505", "#4A0404")
+
+        close_button = tk.Button(
+            button_frame,
+            text="Close",
+            command=settings_window.destroy,
+            **button_style
+        )
+        close_button.pack(side=tk.RIGHT)
+        self.add_hover_effects(close_button, "#5E0505", "#4A0404")
+
+    def switch_herikaserver_branch(self, target_branch):
+        """Switch HerikaServer to a specific tracked branch."""
+        try:
+            normalized_branch = (target_branch or "").strip().lower()
+            if normalized_branch not in ("aiagent", "dev"):
+                self.append_output(
+                    f"Invalid branch selection: '{target_branch}'. Expected aiagent or dev.\n",
+                    "red"
+                )
+                return False
+
+            current_branch = self.get_current_branch()
+            if current_branch == normalized_branch:
+                self.append_output(f"HerikaServer already on branch '{normalized_branch}'.\n")
+                return True
+
+            self.append_output(f"Switching HerikaServer branch to '{normalized_branch}'...\n")
+
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = 0  # SW_HIDE
+
+            switch_cmd = [
+                "wsl", "-d", "DwemerAI4Skyrim3", "-u", "dwemer", "--", "bash", "-c",
+                "cd /var/www/html/HerikaServer && "
+                "git stash save 'Auto-stash before switching branch' && "
+                "git fetch origin && "
+                f"git checkout -B {normalized_branch} origin/{normalized_branch}"
+            ]
+
+            result = subprocess.run(
+                switch_cmd,
+                capture_output=True,
+                text=True,
+                startupinfo=startupinfo,
+                creationflags=subprocess.CREATE_NO_WINDOW
+            )
+
+            if result.returncode != 0:
+                self.append_output(
+                    f"Failed to switch HerikaServer branch to '{normalized_branch}'.\n",
+                    "red"
+                )
+                error_text = (result.stderr or result.stdout or "").strip()
+                if error_text:
+                    self.append_output(f"{error_text}\n", "red")
+                return False
+
+            self.append_output(
+                f"Successfully switched HerikaServer to '{normalized_branch}'.\n",
+                "green"
+            )
+            self.after(1000, lambda: threading.Thread(target=self.check_for_updates, daemon=True).start())
+            self.after(1000, lambda: threading.Thread(target=self.check_nexus_version, daemon=True).start())
+            return True
+        except Exception as e:
+            self.append_output(f"Error switching branch: {str(e)}\n", "red")
+            return False
+
     def update_all(self):
         """Perform a complete update of both distro and server components."""
-        confirm = messagebox.askyesno(
-            "Update System",
-            "This will update both the Dwemer Distro and server components. Are you sure?"
-        )
+        include_server_update = bool(self.update_herikaserver_var.get())
+        target_branch = self.update_target_branch_var.get().strip().lower() or "aiagent"
+
+        if include_server_update:
+            confirm_text = (
+                "This will update both the Dwemer Distro and server components.\n\n"
+                f"HerikaServer target branch: {target_branch}\n\n"
+                "Are you sure?"
+            )
+        else:
+            confirm_text = (
+                "This will update Dwemer Distro only.\n\n"
+                "HerikaServer update is disabled in Update Settings.\n\n"
+                "Are you sure?"
+            )
+
+        confirm = messagebox.askyesno("Update System", confirm_text)
         if not confirm:
             self.append_output("Update canceled.\n")
             return
 
-        # Check if on aiagent branch with misaligned versions
-        current_branch = self.get_current_branch()
-        if current_branch == "aiagent":
+        # Check aiagent branch plugin alignment when server updates are enabled
+        if include_server_update and target_branch == "aiagent":
             nexus_version = self.get_nexus_version()
             local_version = self.get_local_server_version()
             
@@ -3578,26 +3759,37 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
             if nexus_version and local_version and nexus_version != local_version:
                 webbrowser.open("https://www.nexusmods.com/skyrimspecialedition/mods/126330?tab=files")
         
-        # Continue with normal update process
-        threading.Thread(target=self.update_all_thread, daemon=True).start()
+        threading.Thread(
+            target=self.update_all_thread,
+            args=(include_server_update, target_branch),
+            daemon=True
+        ).start()
 
-    def update_all_thread(self):
+    def update_all_thread(self, include_server_update=True, target_branch="aiagent"):
         try:
-            branch_ready, branch_info, branch_state = self.ensure_herikaserver_attached_branch()
-            if not branch_ready:
-                self.append_output(
-                    "Cannot run full update from rollback state: failed to switch to a tracked branch.\n",
-                    "red"
-                )
-                if branch_info:
-                    self.append_output(f"{branch_info}\n", "red")
-                return
+            target_branch = (target_branch or "aiagent").strip().lower()
+            if target_branch not in ("aiagent", "dev"):
+                target_branch = "aiagent"
 
-            if branch_state == "recovered":
-                self.append_output(
-                    f"Detached HEAD detected. Switched to branch '{branch_info}' before full update.\n",
-                    "yellow"
-                )
+            if include_server_update:
+                if not self.switch_herikaserver_branch(target_branch):
+                    return
+
+                branch_ready, branch_info, branch_state = self.ensure_herikaserver_attached_branch()
+                if not branch_ready:
+                    self.append_output(
+                        "Cannot run full update from rollback state: failed to switch to a tracked branch.\n",
+                        "red"
+                    )
+                    if branch_info:
+                        self.append_output(f"{branch_info}\n", "red")
+                    return
+
+                if branch_state == "recovered":
+                    self.append_output(
+                        f"Detached HEAD detected. Switched to branch '{branch_info}' before full update.\n",
+                        "yellow"
+                    )
 
             # Update status to indicate we're working
             self.after(0, lambda: self.update_status_label.config(
@@ -3605,20 +3797,30 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
                 fg="white"
             ))
 
-            self.append_output("Starting full system update...\n")
+            if include_server_update:
+                self.append_output("Starting full system update...\n")
+            else:
+                self.append_output("Starting core system update (HerikaServer skipped)...\n")
             
-            # Run everything in a single command
             self.append_output("\nSTEP 1: Core System Update\n", "green")
             self.append_output("Running update script...\n")
             
-            # Prepare the combined update command
-            # This will run the distro update and then echo a marker, then run the server update
-            combined_cmd = ["wsl", "-d", "DwemerAI4Skyrim3", "-u", "dwemer", "--", "bash", "-c", 
-                        "cd /home/dwemer/dwemerdistro && " +
-                        "git fetch origin && git reset --hard origin/main && " +
-                        "chmod +x update.sh && echo 'dwemer' | sudo -S ./update.sh && " +
-                        "echo '=====MARKER:BEGIN_SERVER_UPDATE=====' && " +
-                        "/usr/local/bin/update_gws"]
+            if include_server_update:
+                combined_cmd = [
+                    "wsl", "-d", "DwemerAI4Skyrim3", "-u", "dwemer", "--", "bash", "-c",
+                    "cd /home/dwemer/dwemerdistro && "
+                    "git fetch origin && git reset --hard origin/main && "
+                    "chmod +x update.sh && echo 'dwemer' | sudo -S ./update.sh && "
+                    "echo '=====MARKER:BEGIN_SERVER_UPDATE=====' && "
+                    "/usr/local/bin/update_gws"
+                ]
+            else:
+                combined_cmd = [
+                    "wsl", "-d", "DwemerAI4Skyrim3", "-u", "dwemer", "--", "bash", "-c",
+                    "cd /home/dwemer/dwemerdistro && "
+                    "git fetch origin && git reset --hard origin/main && "
+                    "chmod +x update.sh && echo 'dwemer' | sudo -S ./update.sh"
+                ]
             
             startupinfo = subprocess.STARTUPINFO()
             startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
@@ -3644,7 +3846,7 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
             # Read output line by line
             for line in update_process.stdout:
                 # Check for our marker line
-                if "=====MARKER:BEGIN_SERVER_UPDATE=====" in line:
+                if include_server_update and "=====MARKER:BEGIN_SERVER_UPDATE=====" in line:
                     distro_update_complete = True
                     server_update_started = True
                     self.append_output("\nSTEP 2: Dwemer Distro Server & Components Update\n", "green")
@@ -3654,28 +3856,33 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
                 self.append_output(line)
 
                 lowered = line.lower()
-                if (
+                if include_server_update and (
                     "you are not currently on a branch" in lowered
                     or "please specify which branch you want to merge with" in lowered
                 ):
                     branch_error_detected = True
                 
                 # Check if server update is complete (look for common completion messages)
-                if server_update_started and ("Successfully" in line or "Completed" in line):
+                if include_server_update and server_update_started and ("Successfully" in line or "Completed" in line):
                     server_update_complete = True
             
             # Process has ended
             update_process.wait()
+
+            if not include_server_update:
+                distro_update_complete = update_process.returncode == 0
             
             # Check the final state
-            if update_process.returncode == 0 and distro_update_complete and not branch_error_detected:
+            if update_process.returncode == 0 and distro_update_complete and (not include_server_update or not branch_error_detected):
                 # Get the current branch for the success message
                 current_branch = self.get_current_branch() or "unknown"
                 
-                if server_update_complete:
+                if include_server_update and server_update_complete:
                     self.append_output(f"Full system update completed successfully! Branch: {current_branch}\n", "green")
-                else:
+                elif include_server_update:
                     self.append_output(f"Update completed. Branch: {current_branch}\n", "green")
+                else:
+                    self.append_output("Distro update completed successfully. HerikaServer update was skipped.\n", "green")
                     
                 # Recheck version and status after update
                 self.after(2000, lambda: threading.Thread(target=self.check_for_updates, daemon=True).start())
@@ -3683,10 +3890,12 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
                 # Something went wrong
                 if not distro_update_complete:
                     self.append_output("Distro update did not complete successfully.\n", "red")
-                elif branch_error_detected:
+                elif include_server_update and branch_error_detected:
                     self.append_output("Server update failed: repository is not on a branch.\n", "red")
-                elif not server_update_complete:
+                elif include_server_update and not server_update_complete:
                     self.append_output("Server update may not have completed successfully.\n", "red")
+                else:
+                    self.append_output("Update may have encountered issues. Check logs above.\n", "red")
                 
                 self.after(0, lambda: self.update_status_label.config(
                     text="Dwemer Distro Server: Update may have issues - see log",
