@@ -215,7 +215,7 @@ class DwemerDistroLauncher(tk.Tk):
         super().__init__()
         self.title("Dwemer Distro")
         # Make window wider and taller, disable resizing
-        self.geometry("880x950") 
+        self.geometry("880x980") 
         self.configure(bg="#2C2C2C")
         self.resizable(False, False) # Disable resizing
 
@@ -254,10 +254,15 @@ class DwemerDistroLauncher(tk.Tk):
         self.wsl_server_ready = False # Flag to track if WSL server reported ready
         self.mcp_enabled_var = tk.BooleanVar(value=True)
         self.update_herikaserver_var = tk.BooleanVar(value=True)
+        self.update_stobeserver_var = tk.BooleanVar(value=True)
         self.update_target_branch_var = tk.StringVar(value="aiagent")
+        self.update_stobeserver_branch_var = tk.StringVar(value="stobe")
+        self.latest_chim_nexus_version = "N/A"
+        self.latest_stobe_nexus_version = "N/A"
 
         self.create_widgets()
         self.load_mcp_enabled_setting()
+        self.load_update_include_settings()
 
         # Set the window icon
         self.set_window_icon('DwemerDistro.png') 
@@ -267,9 +272,11 @@ class DwemerDistroLauncher(tk.Tk):
         
         # Start the update check in a separate thread
         threading.Thread(target=self.check_for_updates, daemon=True).start()
+        threading.Thread(target=self.check_stobeserver_updates, daemon=True).start()
         
         # Start the Nexus version check in a separate thread
         threading.Thread(target=self.check_nexus_version, daemon=True).start()
+        threading.Thread(target=self.check_stobe_nexus_version, daemon=True).start()
         
         # Start the proxy server and discovery service
         self.start_proxy_server()
@@ -574,20 +581,29 @@ class DwemerDistroLauncher(tk.Tk):
         self.update_settings_button.grid(row=0, column=1, sticky="ew")
         self.add_hover_effects(self.update_settings_button, standard_button_bg, standard_button_hover_bg)
 
-        # Create and pack the combined Dwemer Distro Server version and update status label
+        # Create and pack HerikaServer update status label
         self.update_status_label = tk.Label(
             server_updates_frame,
-            text="Dwemer Distro Server: ...",
+            text="HerikaServer: ...",
             fg="white",
             bg="#2C2C2C",
             font=("Trebuchet MS", 10)
         )
         self.update_status_label.pack(pady=5, fill=tk.X)
 
-        # Create and pack the Nexus version label
+        self.stobe_update_status_label = tk.Label(
+            server_updates_frame,
+            text="StobeServer: ...",
+            fg="white",
+            bg="#2C2C2C",
+            font=("Trebuchet MS", 10)
+        )
+        self.stobe_update_status_label.pack(pady=5, fill=tk.X)
+
+        # Create and pack combined CHIM/Stobe Nexus version label
         self.nexus_version_label = tk.Label(
             server_updates_frame,
-            text="Nexus: ...",
+            text="CHIM Nexus: ... | Stobe Nexus: ...",
             fg="white",
             bg="#2C2C2C",
             font=("Trebuchet MS", 10)
@@ -932,6 +948,22 @@ class DwemerDistroLauncher(tk.Tk):
                     "yellow"
                 )
 
+            stobe_branch_ready, stobe_branch_info, stobe_branch_state = self.ensure_stobeserver_attached_branch()
+            if not stobe_branch_ready:
+                self.append_output(
+                    "Cannot update StobeServer from rollback state: failed to switch to a tracked branch.\n",
+                    "red"
+                )
+                if stobe_branch_info:
+                    self.append_output(f"{stobe_branch_info}\n", "red")
+                return
+
+            if stobe_branch_state == "recovered":
+                self.append_output(
+                    f"Detached HEAD detected. Switched StobeServer to branch '{stobe_branch_info}' before update.\n",
+                    "yellow"
+                )
+
             # Run the update command
             startupinfo = subprocess.STARTUPINFO()
             startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
@@ -968,13 +1000,21 @@ class DwemerDistroLauncher(tk.Tk):
 
             # Get the current branch for the success message
             current_branch = self.get_current_branch() or "unknown"
-            self.append_output(f"Update completed successfully. Branch: {current_branch}\n", "green")
+            current_stobe_branch = self.get_stobeserver_current_branch() or "unknown"
+            self.append_output(
+                f"Update completed successfully. HerikaServer: {current_branch} | StobeServer: {current_stobe_branch}\n",
+                "green"
+            )
             
             # Set update status to show it's up-to-date immediately
             # Make sure to update the main thread UI directly
             def update_status_label():
                 self.update_status_label.config(
-                    text=f"Up-to-date ({current_branch})",
+                    text=f"HerikaServer ({current_branch}): Up-to-date",
+                    fg="lime green"
+                )
+                self.stobe_update_status_label.config(
+                    text=f"StobeServer ({current_stobe_branch}): Up-to-date",
                     fg="lime green"
                 )
             self.after(0, update_status_label)
@@ -985,6 +1025,8 @@ class DwemerDistroLauncher(tk.Tk):
             # Recheck versions after update
             self.after(1000, lambda: threading.Thread(target=self.check_for_updates, daemon=True).start())
             self.after(1000, lambda: threading.Thread(target=self.check_nexus_version, daemon=True).start())
+            self.after(1000, lambda: threading.Thread(target=self.check_stobeserver_updates, daemon=True).start())
+            self.after(1000, lambda: threading.Thread(target=self.check_stobe_nexus_version, daemon=True).start())
 
     def update_distro(self):
         threading.Thread(target=self.update_distro_thread, daemon=True).start()
@@ -1083,7 +1125,7 @@ class DwemerDistroLauncher(tk.Tk):
             repo_version = repo_version_result.stdout.strip()
             
             # Run the update.sh script
-            self.append_output("Running update script...\n")
+            self.append_output("Executing update script...\n")
             
             # Run the script with sudo
             update_script_cmd = ["wsl", "-d", "DwemerAI4Skyrim3", "-u", "dwemer", "--", "bash", "-c", 
@@ -1137,6 +1179,8 @@ class DwemerDistroLauncher(tk.Tk):
             # Recheck versions after update
             self.after(1000, lambda: threading.Thread(target=self.check_for_updates, daemon=True).start())
             self.after(1000, lambda: threading.Thread(target=self.check_nexus_version, daemon=True).start())
+            self.after(1000, lambda: threading.Thread(target=self.check_stobeserver_updates, daemon=True).start())
+            self.after(1000, lambda: threading.Thread(target=self.check_stobe_nexus_version, daemon=True).start())
 
     def refresh_distro_version(self):
         """Refreshes the distro version display after an update."""
@@ -2064,7 +2108,8 @@ class DwemerDistroLauncher(tk.Tk):
         action_commands = [
             ("Open Terminal", self.open_terminal),
             ("View Memory Usage", self.view_memory_usage),
-            ("Rollback", self.open_rollback_menu),
+            ("Rollback HerikaServer", lambda: self.open_rollback_menu("herika")),
+            ("Rollback StobeServer", lambda: self.open_rollback_menu("stobe")),
             ("Configure CUDA GPU", self.open_cuda_config_menu),
         ]
         for text, command in action_commands:
@@ -2148,10 +2193,53 @@ class DwemerDistroLauncher(tk.Tk):
             return True, output.split(":", 1)[1].strip(), "recovered"
         return False, "Could not determine branch state.", "failed"
 
-    def get_herikaserver_head_info(self):
-        """Get current HerikaServer branch and short SHA."""
+    def ensure_stobeserver_attached_branch(self):
+        """Ensure StobeServer is on a tracked branch before updates."""
         result = self.run_wsl_bash_capture(
-            "cd /var/www/html/HerikaServer && "
+            "cd /var/www/html/StobeServer && "
+            "current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo ''); "
+            "if [ -n \"$current_branch\" ] && [ \"$current_branch\" != \"HEAD\" ]; then "
+            "echo ATTACHED:$current_branch; exit 0; "
+            "fi; "
+            "git checkout -B stobe >/dev/null 2>&1 || { echo ERROR:CHECKOUT_FAILED; exit 1; }; "
+            "echo RECOVERED:stobe"
+        )
+
+        output = result.stdout.strip()
+        if result.returncode != 0:
+            error_text = result.stderr.strip() if result.stderr else output
+            return False, error_text, "failed"
+
+        if output.startswith("ATTACHED:"):
+            return True, output.split(":", 1)[1].strip(), "attached"
+        if output.startswith("RECOVERED:"):
+            return True, output.split(":", 1)[1].strip(), "recovered"
+        return False, "Could not determine StobeServer branch state.", "failed"
+
+    def get_rollback_server_config(self, server_key="herika"):
+        """Get rollback metadata for HerikaServer or StobeServer."""
+        normalized_key = (server_key or "herika").strip().lower()
+        if normalized_key in ("stobe", "stobeserver"):
+            return {
+                "key": "stobe",
+                "display_name": "StobeServer",
+                "repo_path": "/var/www/html/StobeServer",
+                "version_number_files": [".version_number.txt", "versionnumber.txt"],
+                "version_text_files": [".version.txt", "version.txt"],
+            }
+        return {
+            "key": "herika",
+            "display_name": "HerikaServer",
+            "repo_path": "/var/www/html/HerikaServer",
+            "version_number_files": [".version_number.txt"],
+            "version_text_files": [".version.txt"],
+        }
+
+    def get_server_head_info(self, server_key="herika"):
+        """Get current branch and short SHA for selected server repo."""
+        config = self.get_rollback_server_config(server_key)
+        result = self.run_wsl_bash_capture(
+            f"cd {config['repo_path']} && "
             "git rev-parse --abbrev-ref HEAD && "
             "git rev-parse --short HEAD"
         )
@@ -2163,14 +2251,46 @@ class DwemerDistroLauncher(tk.Tk):
             return None, None
         return lines[0], lines[1]
 
-    def get_rollback_targets(self):
-        """Return rollback candidates from version file history."""
-        targets = []
+    def get_herikaserver_head_info(self):
+        """Get current HerikaServer branch and short SHA."""
+        return self.get_server_head_info("herika")
 
+    def get_stobeserver_head_info(self):
+        """Get current StobeServer branch and short SHA."""
+        return self.get_server_head_info("stobe")
+
+    def get_stobeserver_current_branch(self):
+        """Get the current StobeServer git branch."""
+        branch, _ = self.get_stobeserver_head_info()
+        return branch
+
+    def get_commit_file_first_line(self, repo_path, commit_sha, file_candidates):
+        """Return the first non-empty line found in candidate files at a commit."""
+        commit_sha_safe = shlex.quote(commit_sha)
+        for file_name in file_candidates:
+            file_name_safe = shlex.quote(file_name)
+            result = self.run_wsl_bash_capture(
+                f"cd {repo_path} && git show {commit_sha_safe}:{file_name_safe} 2>/dev/null | sed -n '1p'"
+            )
+            if result.returncode != 0:
+                continue
+            line = result.stdout.strip()
+            if line:
+                return line
+        return ""
+
+    def get_rollback_targets(self, server_key="herika"):
+        """Return rollback candidates from selected server version history."""
+        config = self.get_rollback_server_config(server_key)
+        repo_path = config["repo_path"]
+        version_history_files = config["version_number_files"] + config["version_text_files"]
+        history_files_arg = " ".join(version_history_files)
+
+        targets = []
         history_result = self.run_wsl_bash_capture(
-            "cd /var/www/html/HerikaServer && "
+            f"cd {repo_path} && "
             "git fetch --all --tags --quiet && "
-            "git log --date=short --pretty=format:'%H\t%h\t%cd' -n 40 -- .version_number.txt .version.txt"
+            f"git log --date=short --pretty=format:'%H\t%h\t%cd' -n 40 -- {history_files_arg}"
         )
         if history_result.returncode != 0:
             return targets
@@ -2182,15 +2302,12 @@ class DwemerDistroLauncher(tk.Tk):
                 continue
 
             full_sha, sha_short, commit_date = parts[0], parts[1], parts[2]
-            version_number_result = self.run_wsl_bash_capture(
-                f"cd /var/www/html/HerikaServer && git show {shlex.quote(full_sha)}:.version_number.txt 2>/dev/null | sed -n '1p'"
+            version_number = self.get_commit_file_first_line(
+                repo_path, full_sha, config["version_number_files"]
             )
-            version_text_result = self.run_wsl_bash_capture(
-                f"cd /var/www/html/HerikaServer && git show {shlex.quote(full_sha)}:.version.txt 2>/dev/null | sed -n '1p'"
+            version_text = self.get_commit_file_first_line(
+                repo_path, full_sha, config["version_text_files"]
             )
-
-            version_number = version_number_result.stdout.strip() if version_number_result.returncode == 0 else ""
-            version_text = version_text_result.stdout.strip() if version_text_result.returncode == 0 else ""
 
             # Only show valid, explicit version points.
             if not version_number:
@@ -2201,7 +2318,6 @@ class DwemerDistroLauncher(tk.Tk):
                 continue
             seen_versions.add(version_key)
 
-            version_display = version_number
             targets.append({
                 "type": "version",
                 "ref": full_sha,
@@ -2209,26 +2325,28 @@ class DwemerDistroLauncher(tk.Tk):
                 "date": commit_date,
                 "version_number": version_number,
                 "version_text": version_text,
-                "label": f"Version {version_display} - {commit_date}"
+                "label": f"Version {version_number} - {commit_date}"
             })
 
         return targets
 
-    def open_rollback_menu(self):
-        """Open rollback selection modal for HerikaServer."""
-        current_branch, current_sha = self.get_herikaserver_head_info()
-        rollback_targets = self.get_rollback_targets()
+    def open_rollback_menu(self, server_key="herika"):
+        """Open rollback selection modal for HerikaServer or StobeServer."""
+        config = self.get_rollback_server_config(server_key)
+        display_name = config["display_name"]
+        current_branch, current_sha = self.get_server_head_info(config["key"])
+        rollback_targets = self.get_rollback_targets(config["key"])
 
         if not rollback_targets:
             messagebox.showerror(
                 "Rollback Unavailable",
-                "No rollback targets were found in HerikaServer.\n\n"
+                f"No rollback targets were found in {display_name}.\n\n"
                 "Confirm git history is available and try again."
             )
             return
 
         rollback_window = tk.Toplevel(self)
-        rollback_window.title("Rollback HerikaServer")
+        rollback_window.title(f"Rollback {display_name}")
         rollback_window.geometry("860x620")
         rollback_window.configure(bg="#2C2C2C")
         rollback_window.resizable(False, False)
@@ -2246,7 +2364,7 @@ class DwemerDistroLauncher(tk.Tk):
 
         tk.Label(
             main_frame,
-            text="HerikaServer Rollback",
+            text=f"{display_name} Rollback",
             bg="#2C2C2C",
             fg="white",
             font=("Trebuchet MS", 14, "bold")
@@ -2316,7 +2434,12 @@ class DwemerDistroLauncher(tk.Tk):
         rollback_btn = tk.Button(
             button_frame,
             text="Rollback",
-            command=lambda: self.request_rollback_target(target_listbox, rollback_targets, rollback_window),
+            command=lambda key=config["key"]: self.request_rollback_target(
+                target_listbox,
+                rollback_targets,
+                rollback_window,
+                key
+            ),
             **button_style
         )
         rollback_btn.pack(side=tk.LEFT, padx=6)
@@ -2331,7 +2454,7 @@ class DwemerDistroLauncher(tk.Tk):
         cancel_btn.pack(side=tk.LEFT, padx=6)
         self.add_hover_effects(cancel_btn, '#5E0505', '#4A0404')
 
-    def request_rollback_target(self, target_listbox, rollback_targets, rollback_window):
+    def request_rollback_target(self, target_listbox, rollback_targets, rollback_window, server_key="herika"):
         """Validate selected target and run rollback in a worker thread."""
         selected_indices = target_listbox.curselection()
         if not selected_indices:
@@ -2340,10 +2463,11 @@ class DwemerDistroLauncher(tk.Tk):
 
         selected_target = rollback_targets[selected_indices[0]]
         selected_label = selected_target.get("label", selected_target.get("ref", "unknown"))
+        display_name = self.get_rollback_server_config(server_key)["display_name"]
 
         confirmed = messagebox.askyesno(
             "Confirm Rollback",
-            f"Rollback HerikaServer to:\n\n{selected_label}\n\n"
+            f"Rollback {display_name} to:\n\n{selected_label}\n\n"
             "Warning: Rolling back to much older versions can cause data/config incompatibility\n"
             "and may result in data loss if migrations or files are not backward compatible.\n\n"
             "Any local changes will be auto-stashed first.\n"
@@ -2353,20 +2477,24 @@ class DwemerDistroLauncher(tk.Tk):
             return
 
         threading.Thread(
-            target=self.rollback_herikaserver,
-            args=(selected_target, rollback_window),
+            target=self.rollback_server,
+            args=(selected_target, rollback_window, server_key),
             daemon=True
         ).start()
 
-    def rollback_herikaserver(self, target, rollback_window):
-        """Rollback HerikaServer to selected target reference."""
+    def rollback_server(self, target, rollback_window, server_key="herika"):
+        """Rollback selected server to target reference."""
+        config = self.get_rollback_server_config(server_key)
+        display_name = config["display_name"]
+        repo_path = config["repo_path"]
+
         try:
             target_ref = target.get("ref")
             if not target_ref:
                 self.append_output("Rollback failed: invalid target reference.\n", "red")
                 return
 
-            self.append_output("Starting HerikaServer rollback...\n")
+            self.append_output(f"Starting {display_name} rollback...\n")
             self.append_output(f"Target: {target.get('label', target_ref)}\n")
             self.append_output(
                 "Warning: DB/config compatibility can vary across versions.\n",
@@ -2384,7 +2512,7 @@ class DwemerDistroLauncher(tk.Tk):
                 "wsl", "-d", "DwemerAI4Skyrim3", "-u", "dwemer", "--",
                 "bash", "-lc",
                 "set -e; "
-                "cd /var/www/html/HerikaServer; "
+                f"cd {repo_path}; "
                 "git rev-parse --is-inside-work-tree >/dev/null; "
                 "git fetch --all --tags; "
                 f"git rev-parse --verify {verify_ref_safe} >/dev/null; "
@@ -2419,11 +2547,13 @@ class DwemerDistroLauncher(tk.Tk):
                 return
 
             final_sha = rolled_back_sha if rolled_back_sha else "unknown"
-            self.append_output(f"Rollback completed successfully. HEAD: {final_sha}\n", "green")
+            self.append_output(f"{display_name} rollback completed successfully. HEAD: {final_sha}\n", "green")
 
             self.after(0, rollback_window.destroy)
             self.after(1000, lambda: threading.Thread(target=self.check_for_updates, daemon=True).start())
             self.after(1000, lambda: threading.Thread(target=self.check_nexus_version, daemon=True).start())
+            self.after(1000, lambda: threading.Thread(target=self.check_stobeserver_updates, daemon=True).start())
+            self.after(1000, lambda: threading.Thread(target=self.check_stobe_nexus_version, daemon=True).start())
         except Exception as e:
             self.append_output(f"Rollback error: {str(e)}\n", "red")
 
@@ -2627,6 +2757,73 @@ class DwemerDistroLauncher(tk.Tk):
                 self.append_output(f"Failed to save MCP setting: {result.stderr}\n", "red")
         except Exception as e:
             self.append_output(f"Failed to save MCP setting: {e}\n", "red")
+
+    def load_update_include_settings(self):
+        """Load updater include toggles from WSL flag files."""
+        try:
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = 0  # SW_HIDE
+
+            cmd = [
+                "wsl", "-d", "DwemerAI4Skyrim3", "--", "bash", "-lc",
+                "if [ -f /home/dwemer/.update_include_herika ]; then "
+                "cat /home/dwemer/.update_include_herika; "
+                "else echo 1 > /home/dwemer/.update_include_herika; echo 1; fi; "
+                "if [ -f /home/dwemer/.update_include_stobe ]; then "
+                "cat /home/dwemer/.update_include_stobe; "
+                "else echo 1 > /home/dwemer/.update_include_stobe; echo 1; fi"
+            ]
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                startupinfo=startupinfo,
+                creationflags=subprocess.CREATE_NO_WINDOW
+            )
+
+            if result.returncode == 0:
+                values = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+                herika_value = values[0] if len(values) > 0 else "1"
+                stobe_value = values[1] if len(values) > 1 else "1"
+                self.update_herikaserver_var.set(herika_value == "1")
+                self.update_stobeserver_var.set(stobe_value == "1")
+            else:
+                self.update_herikaserver_var.set(True)
+                self.update_stobeserver_var.set(True)
+        except Exception:
+            self.update_herikaserver_var.set(True)
+            self.update_stobeserver_var.set(True)
+
+    def save_update_include_settings(self):
+        """Persist updater include toggles to WSL flag files."""
+        try:
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = 0  # SW_HIDE
+
+            herika_value = "1" if self.update_herikaserver_var.get() else "0"
+            stobe_value = "1" if self.update_stobeserver_var.get() else "0"
+            cmd = [
+                "wsl", "-d", "DwemerAI4Skyrim3", "--", "bash", "-lc",
+                f"echo {herika_value} > /home/dwemer/.update_include_herika && "
+                f"echo {stobe_value} > /home/dwemer/.update_include_stobe"
+            ]
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                startupinfo=startupinfo,
+                creationflags=subprocess.CREATE_NO_WINDOW
+            )
+
+            if result.returncode != 0:
+                self.append_output(
+                    f"Failed to save update include settings: {result.stderr}\n",
+                    "red"
+                )
+        except Exception as e:
+            self.append_output(f"Failed to save update include settings: {e}\n", "red")
 
     def get_current_gpu_setting(self):
         """Get the current GPU setting from WSL."""
@@ -2870,6 +3067,8 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
                     self.after(1000, lambda: threading.Thread(target=self.check_for_updates, daemon=True).start())
                     # Check Nexus/Discord version after switching branch
                     self.after(1000, lambda: threading.Thread(target=self.check_nexus_version, daemon=True).start())
+                    self.after(1000, lambda: threading.Thread(target=self.check_stobeserver_updates, daemon=True).start())
+                    self.after(1000, lambda: threading.Thread(target=self.check_stobe_nexus_version, daemon=True).start())
                     
             elif current_branch == "dev":
                 # Currently on Dev branch, switch to Release
@@ -2901,6 +3100,8 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
                     self.after(1000, lambda: threading.Thread(target=self.check_for_updates, daemon=True).start())
                     # Check Nexus/Discord version after switching branch
                     self.after(1000, lambda: threading.Thread(target=self.check_nexus_version, daemon=True).start())
+                    self.after(1000, lambda: threading.Thread(target=self.check_stobeserver_updates, daemon=True).start())
+                    self.after(1000, lambda: threading.Thread(target=self.check_stobe_nexus_version, daemon=True).start())
                     
             else:
                 # Unexpected branch, switch back to aiagent
@@ -2932,6 +3133,8 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
                     self.after(1000, lambda: threading.Thread(target=self.check_for_updates, daemon=True).start())
                     # Check Nexus/Discord version after switching branch
                     self.after(1000, lambda: threading.Thread(target=self.check_nexus_version, daemon=True).start())
+                    self.after(1000, lambda: threading.Thread(target=self.check_stobeserver_updates, daemon=True).start())
+                    self.after(1000, lambda: threading.Thread(target=self.check_stobe_nexus_version, daemon=True).start())
 
         except Exception as e:
             self.append_output(f"Error switching branch: {str(e)}\n")
@@ -2958,6 +3161,42 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
         except Exception:
             return None
 
+    def get_current_stobeserver_version(self):
+        """Get StobeServer date version from .version.txt."""
+        try:
+            candidates = [
+                r'\\wsl$\DwemerAI4Skyrim3\var\www\html\StobeServer\.version.txt',
+                r'\\wsl$\DwemerAI4Skyrim3\var\www\html\StobeServer\version.txt',
+            ]
+            for version_file_path in candidates:
+                if not os.path.exists(version_file_path):
+                    continue
+                with open(version_file_path, 'r') as file:
+                    version = file.read().strip()
+                    if version:
+                        return version
+            return None
+        except Exception:
+            return None
+
+    def get_local_stobeserver_version(self):
+        """Read StobeServer semantic version from .version_number.txt."""
+        try:
+            candidates = [
+                r'\\wsl$\DwemerAI4Skyrim3\var\www\html\StobeServer\.version_number.txt',
+                r'\\wsl$\DwemerAI4Skyrim3\var\www\html\StobeServer\versionnumber.txt',
+            ]
+            for version_file in candidates:
+                if not os.path.exists(version_file):
+                    continue
+                with open(version_file, 'r') as f:
+                    version = f.read().strip()
+                    if version:
+                        return version
+            return None
+        except Exception:
+            return None
+
     def get_git_version(self):
         """Get the latest server version from GitHub based on current branch."""
         try:
@@ -2978,6 +3217,30 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
                 return None
         except Exception as e:
             print(f"Exception in get_git_version: {e}")
+            return None
+
+    def get_stobeserver_git_version(self):
+        """Get latest StobeServer date version from GitHub based on current branch."""
+        try:
+            current_branch = self.get_stobeserver_current_branch()
+            if not current_branch:
+                print("Could not determine StobeServer current branch")
+                return None
+
+            candidate_urls = [
+                f"https://raw.githubusercontent.com/Dwemer-Dynamics/StobeServer/{current_branch}/.version.txt",
+                f"https://raw.githubusercontent.com/Dwemer-Dynamics/StobeServer/{current_branch}/version.txt",
+            ]
+            for url in candidate_urls:
+                response = requests.get(url, timeout=2)
+                if response.status_code == 200:
+                    text = response.text.strip()
+                    if text:
+                        return text
+            print("get_stobeserver_git_version failed for all version file candidates")
+            return None
+        except Exception as e:
+            print(f"Exception in get_stobeserver_git_version: {e}")
             return None
 
     def compare_versions(self, v1, v2):
@@ -3075,7 +3338,7 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
         update_label_config = lambda config: self.after(0, self.update_status_label.config, config)
 
         # Initial state while checking
-        update_label_config({"text": "Dwemer Distro Server: Checking...", "fg": "white"})
+        update_label_config({"text": "HerikaServer: Checking...", "fg": "white"})
 
         # Start threads to get versions and branch concurrently
         # Use date-based version (.version.txt) for server update check
@@ -3118,22 +3381,80 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
             comparison = self.compare_versions(current_version[0], git_version[0])
             if comparison < 0:
                 # Update available - GitHub has newer server code
-                final_text = f"Dwemer Distro Server{branch_text}: Update Available [{version_display}]"
+                final_text = f"HerikaServer{branch_text}: Update Available [{version_display}]"
                 text_color = "red"
             else:
                 # Up-to-date - server code matches GitHub
-                final_text = f"Dwemer Distro Server{branch_text}: Fully Updated [{version_display}]"
+                final_text = f"HerikaServer{branch_text}: Fully Updated [{version_display}]"
                 text_color = "lime green"
         elif current_version[0]:
             # Have local version but no git version
-            final_text = f"Dwemer Distro Server{branch_text}: [{version_display}]"
+            final_text = f"HerikaServer{branch_text}: [{version_display}]"
             text_color = "lime green"
         else:
             # Could not retrieve version information
-            final_text = f"Dwemer Distro Server{branch_text}: [N/A]"
+            final_text = f"HerikaServer{branch_text}: [N/A]"
             text_color = "yellow" # Use yellow for check failure
             
         # Update the label with final text and color
+        update_label_config({"text": final_text, "fg": text_color})
+
+    def check_stobeserver_updates(self):
+        """Check if a newer StobeServer version is available and update status label."""
+        update_label_config = lambda config: self.after(0, self.stobe_update_status_label.config, config)
+
+        update_label_config({"text": "StobeServer: Checking...", "fg": "white"})
+
+        current_version = [None]
+        git_version = [None]
+        current_branch = [None]
+        semantic_version = [None]
+
+        def get_current_version_thread():
+            current_version[0] = self.get_current_stobeserver_version()
+
+        def get_git_version_thread():
+            git_version[0] = self.get_stobeserver_git_version()
+
+        def get_branch_thread():
+            current_branch[0] = self.get_stobeserver_current_branch()
+
+        def get_semantic_version_thread():
+            semantic_version[0] = self.get_local_stobeserver_version()
+
+        threads = [
+            threading.Thread(target=get_current_version_thread),
+            threading.Thread(target=get_git_version_thread),
+            threading.Thread(target=get_branch_thread),
+            threading.Thread(target=get_semantic_version_thread)
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        branch_text = f" ({current_branch[0]})" if current_branch[0] else ""
+        date_display = self.format_date_version(current_version[0]) if current_version[0] else "N/A"
+        semantic_display = semantic_version[0] if semantic_version[0] else "N/A"
+        version_display = f"{date_display} | {semantic_display}"
+        final_text = ""
+        text_color = "white"
+
+        if current_version[0] and git_version[0]:
+            comparison = self.compare_versions(current_version[0], git_version[0])
+            if comparison < 0:
+                final_text = f"StobeServer{branch_text}: Update Available [{version_display}]"
+                text_color = "red"
+            else:
+                final_text = f"StobeServer{branch_text}: Fully Updated [{version_display}]"
+                text_color = "lime green"
+        elif current_version[0]:
+            final_text = f"StobeServer{branch_text}: [{version_display}]"
+            text_color = "lime green"
+        else:
+            final_text = f"StobeServer{branch_text}: [N/A]"
+            text_color = "yellow"
+
         update_label_config({"text": final_text, "fg": text_color})
 
     def generate_diagnostics(self):
@@ -3364,25 +3685,22 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
         # Update the label with final text and color
         update_label_config({"text": final_text, "fg": text_color})
 
-    def get_nexus_version(self):
-        """Fetch the current mod version from Nexus Mods page."""
+    def _get_nexus_version_from_url(self, url):
+        """Fetch current mod version from a Nexus Mods page."""
         try:
-            url = "https://www.nexusmods.com/skyrimspecialedition/mods/126330"
             html_text = None
-            
-            # Try urllib first (most reliable)
+
             try:
                 req = urllib.request.Request(url)
                 req.add_header('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
                 req.add_header('Accept', 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8')
                 req.add_header('Accept-Language', 'en-US,en;q=0.9')
                 req.add_header('Referer', 'https://www.nexusmods.com/')
-                
+
                 with urllib.request.urlopen(req, timeout=10) as response:
                     html_text = response.read().decode('utf-8')
             except urllib.error.HTTPError as e:
                 if e.code == 403:
-                    # Try requests with session as fallback
                     session = requests.Session()
                     headers = {
                         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -3400,7 +3718,6 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
                 else:
                     raise
             except Exception:
-                # Try requests if urllib fails
                 try:
                     session = requests.Session()
                     headers = {
@@ -3417,7 +3734,6 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
                     response.raise_for_status()
                     html_text = response.text
                 except requests.RequestException:
-                    # Last resort: try curl via subprocess
                     try:
                         curl_cmd = [
                             'curl', '-s', '-L',
@@ -3430,11 +3746,10 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
                             html_text = result.stdout
                     except Exception:
                         pass
-            
+
             if not html_text:
                 return None
-            
-            # Try to find version using regex in raw HTML
+
             patterns = [
                 r'<div[^>]*class=["\']titlestat["\'][^>]*>Version</div>.*?<div[^>]*class=["\']stat["\'][^>]*>(\d+\.\d+\.\d+)</div>',
                 r'(?:Version|version)[^>]*>.*?<div[^>]*class=["\']stat["\'][^>]*>(\d+\.\d+\.\d+)</div>',
@@ -3446,11 +3761,9 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
                     version = version_match.group(1)
                     if version:
                         return version
-            
-            # Parse HTML with BeautifulSoup for more precise matching
+
             soup = BeautifulSoup(html_text, 'html.parser')
-            
-            # Find statitem with "Version" title, then get the stat div
+
             for statitem in soup.find_all('div', class_='statitem'):
                 title_div = statitem.find('div', class_='titlestat')
                 if title_div:
@@ -3461,8 +3774,7 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
                             version = stat_div.get_text(strip=True)
                             if version:
                                 return version
-            
-            # Fallback: Find by SVG icon with class 'icon-stat-version'
+
             version_icon = soup.find('svg', class_='icon-stat-version')
             if version_icon:
                 statitem = version_icon.find_parent('div', class_='statitem')
@@ -3472,8 +3784,7 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
                         version = stat_div.get_text(strip=True)
                         if version:
                             return version
-            
-            # Fallback: Search all stat divs and verify their parent statitem has "Version"
+
             for stat_div in soup.find_all('div', class_='stat'):
                 statitem = stat_div.find_parent('div', class_='statitem')
                 if statitem:
@@ -3484,8 +3795,7 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
                             version = stat_div.get_text(strip=True)
                             if version:
                                 return version
-            
-            # Fallback: Look for version pattern in stat divs near "Version" text
+
             for element in soup.find_all(string=re.compile(r'Version', re.I)):
                 parent = element.find_parent()
                 while parent:
@@ -3497,89 +3807,59 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
                                 return version
                         break
                     parent = parent.find_parent()
-            
+
             return None
         except Exception:
             return None
 
-    def check_nexus_version(self):
-        """Fetch and display the Nexus Mods version."""
-        update_label = lambda config: self.after(0, self.nexus_version_label.config, config)
-        
-        nexus_version = self.get_nexus_version()
-        local_version = self.get_local_server_version()
-        current_branch = self.get_current_branch()
-        
-        if nexus_version:
-            # Check branch-specific logic
-            if current_branch == "aiagent":
-                # On aiagent branch: check if versions are synced
-                if local_version and nexus_version != local_version:
-                    # Versions are not synced - show warning message
-                    def update_with_messages():
-                        self.nexus_version_label.config(
-                            text=f"Nexus: {nexus_version}: Click to download the latest AIAgent from the Nexus",
-                            fg="yellow",
-                            cursor="hand2",
-                            underline=True
-                        )
-                        # Make label clickable to download page
-                        self.nexus_version_label.bind("<Button-1>", lambda e: webbrowser.open("https://www.nexusmods.com/skyrimspecialedition/mods/126330?tab=files"))
-                    self.after(0, update_with_messages)
-                    return
-                else:
-                    # Versions are synced - show green but still clickable
-                    def update_with_link():
-                        self.nexus_version_label.config(
-                            text=f"Nexus: {nexus_version}",
-                            fg="lime green",
-                            cursor="hand2",
-                            underline=True
-                        )
-                        # Make label clickable to download page
-                        self.nexus_version_label.bind("<Button-1>", lambda e: webbrowser.open("https://www.nexusmods.com/skyrimspecialedition/mods/126330?tab=files"))
-                    self.after(0, update_with_link)
-                    return
-            elif current_branch == "dev":
-                # On dev branch: always show Discord link (no version tracking)
-                def update_with_discord():
-                    self.nexus_version_label.config(
-                        text="Discord Beta: Download latest beta plugin (Click Here)",
-                        fg="white",
-                        cursor="hand2",
-                        underline=True
-                    )
-                    # Make label clickable to Discord
-                    self.nexus_version_label.bind("<Button-1>", lambda e: webbrowser.open("https://discord.com/invite/NDn9qud2ug"))
-                self.after(0, update_with_discord)
-                return
-            else:
-                # Other branches: show version and make clickable
-                def update_with_link():
-                    self.nexus_version_label.config(
-                        text=f"Nexus: {nexus_version}",
-                        fg="lime green",
-                        cursor="hand2",
-                        underline=True
-                    )
-                    # Make label clickable to download page
-                    self.nexus_version_label.bind("<Button-1>", lambda e: webbrowser.open("https://www.nexusmods.com/skyrimspecialedition/mods/126330?tab=files"))
-                self.after(0, update_with_link)
-                return
-        else:
-            update_label({"text": "Nexus: N/A", "fg": "yellow"})
-        
-        # Unbind click if no special logic applies
+    def get_nexus_version(self):
+        """Fetch current HerikaServer mod version from Nexus Mods page."""
+        return self._get_nexus_version_from_url("https://www.nexusmods.com/skyrimspecialedition/mods/126330")
+
+    def get_stobe_nexus_version(self):
+        """Fetch current Stobe mod version from Nexus Mods page."""
+        return self._get_nexus_version_from_url("https://www.nexusmods.com/kenshi/mods/1891?tab=description")
+
+    def refresh_combined_nexus_label(self):
+        """Render CHIM + Stobe Nexus versions in a single updater line."""
+        chim_version = self.latest_chim_nexus_version if self.latest_chim_nexus_version else "N/A"
+        stobe_version = self.latest_stobe_nexus_version if self.latest_stobe_nexus_version else "N/A"
+
+        text_color = "lime green"
+        if chim_version == "N/A" or stobe_version == "N/A":
+            text_color = "yellow"
+
+        self.after(
+            0,
+            lambda: self.nexus_version_label.config(
+                text=f"CHIM Nexus: {chim_version} | Stobe Nexus: {stobe_version}",
+                fg=text_color,
+                cursor="arrow",
+                underline=False
+            )
+        )
         try:
             self.nexus_version_label.unbind("<Button-1>")
-        except:
+        except Exception:
             pass
 
+    def check_nexus_version(self):
+        """Fetch and store CHIM Nexus version for combined updater label."""
+        nexus_version = self.get_nexus_version()
+        self.latest_chim_nexus_version = nexus_version if nexus_version else "N/A"
+        self.refresh_combined_nexus_label()
+
+    def check_stobe_nexus_version(self):
+        """Fetch and store Stobe Nexus version for combined updater label."""
+        nexus_version = self.get_stobe_nexus_version()
+        self.latest_stobe_nexus_version = nexus_version if nexus_version else "N/A"
+        self.refresh_combined_nexus_label()
+
     def open_update_settings_menu(self):
-        """Open settings for updater behavior and HerikaServer branch selection."""
+        """Open settings for updater behavior and server branch selection."""
         settings_window = tk.Toplevel(self)
         settings_window.title("Update Settings")
-        settings_window.geometry("390x220")
+        settings_window.geometry("390x340")
         settings_window.configure(bg="#2C2C2C")
         settings_window.resizable(False, False)
         settings_window.transient(self)
@@ -3592,10 +3872,39 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
         if current_branch in ("aiagent", "dev"):
             self.update_target_branch_var.set(current_branch)
 
+        current_stobe_branch = self.get_stobeserver_current_branch()
+        if current_stobe_branch in ("stobe", "dev"):
+            self.update_stobeserver_branch_var.set(current_stobe_branch)
+
+        tk.Label(
+            content_frame,
+            text="Include in Update",
+            bg="#2C2C2C",
+            fg="white",
+            font=("Trebuchet MS", 10, "bold"),
+            anchor="w"
+        ).pack(fill=tk.X)
+
         tk.Checkbutton(
             content_frame,
-            text="Include HerikaServer in Update",
+            text="HerikaServer",
             variable=self.update_herikaserver_var,
+            command=self.save_update_include_settings,
+            bg="#2C2C2C",
+            fg="white",
+            activebackground="#2C2C2C",
+            activeforeground="white",
+            selectcolor="#2C2C2C",
+            font=("Trebuchet MS", 10),
+            anchor="w",
+            cursor="hand2"
+        ).pack(fill=tk.X, pady=(4, 2))
+
+        tk.Checkbutton(
+            content_frame,
+            text="StobeServer",
+            variable=self.update_stobeserver_var,
+            command=self.save_update_include_settings,
             bg="#2C2C2C",
             fg="white",
             activebackground="#2C2C2C",
@@ -3627,6 +3936,27 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
         )
         branch_dropdown.pack(side=tk.LEFT)
 
+        tk.Label(
+            content_frame,
+            text="StobeServer Branch",
+            bg="#2C2C2C",
+            fg="white",
+            font=("Trebuchet MS", 10, "bold"),
+            anchor="w"
+        ).pack(fill=tk.X)
+
+        stobe_branch_row = tk.Frame(content_frame, bg="#2C2C2C")
+        stobe_branch_row.pack(fill=tk.X, pady=(5, 12))
+
+        stobe_branch_dropdown = ttk.Combobox(
+            stobe_branch_row,
+            textvariable=self.update_stobeserver_branch_var,
+            values=["stobe", "dev"],
+            state="readonly",
+            width=12
+        )
+        stobe_branch_dropdown.pack(side=tk.LEFT)
+
         button_frame = tk.Frame(content_frame, bg="#2C2C2C")
         button_frame.pack(fill=tk.X)
 
@@ -3650,6 +3980,14 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
                 daemon=True
             ).start()
 
+        def switch_selected_stobe_branch():
+            target_branch = self.update_stobeserver_branch_var.get().strip().lower()
+            threading.Thread(
+                target=self.switch_stobeserver_branch,
+                args=(target_branch,),
+                daemon=True
+            ).start()
+
         switch_button = tk.Button(
             branch_row,
             text="Switch Branch",
@@ -3658,6 +3996,15 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
         )
         switch_button.pack(side=tk.LEFT, padx=(8, 0))
         self.add_hover_effects(switch_button, "#5E0505", "#4A0404")
+
+        stobe_switch_button = tk.Button(
+            stobe_branch_row,
+            text="Switch Branch",
+            command=switch_selected_stobe_branch,
+            **button_style
+        )
+        stobe_switch_button.pack(side=tk.LEFT, padx=(8, 0))
+        self.add_hover_effects(stobe_switch_button, "#5E0505", "#4A0404")
 
         close_button = tk.Button(
             button_frame,
@@ -3722,26 +4069,101 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
             )
             self.after(1000, lambda: threading.Thread(target=self.check_for_updates, daemon=True).start())
             self.after(1000, lambda: threading.Thread(target=self.check_nexus_version, daemon=True).start())
+            self.after(1000, lambda: threading.Thread(target=self.check_stobeserver_updates, daemon=True).start())
+            self.after(1000, lambda: threading.Thread(target=self.check_stobe_nexus_version, daemon=True).start())
             return True
         except Exception as e:
             self.append_output(f"Error switching branch: {str(e)}\n", "red")
             return False
 
+    def switch_stobeserver_branch(self, target_branch):
+        """Switch StobeServer to a specific tracked branch."""
+        try:
+            normalized_branch = (target_branch or "").strip().lower()
+            if normalized_branch not in ("stobe", "dev"):
+                self.append_output(
+                    f"Invalid StobeServer branch selection: '{target_branch}'. Expected stobe or dev.\n",
+                    "red"
+                )
+                return False
+
+            current_branch = self.get_stobeserver_current_branch()
+            if current_branch == normalized_branch:
+                self.append_output(f"StobeServer already on branch '{normalized_branch}'.\n")
+                return True
+
+            self.append_output(f"Switching StobeServer branch to '{normalized_branch}'...\n")
+
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = 0  # SW_HIDE
+
+            switch_cmd = [
+                "wsl", "-d", "DwemerAI4Skyrim3", "-u", "dwemer", "--", "bash", "-c",
+                "cd /var/www/html/StobeServer && "
+                "git stash save 'Auto-stash before switching branch' && "
+                "git fetch origin && "
+                f"git checkout -B {normalized_branch} origin/{normalized_branch}"
+            ]
+
+            result = subprocess.run(
+                switch_cmd,
+                capture_output=True,
+                text=True,
+                startupinfo=startupinfo,
+                creationflags=subprocess.CREATE_NO_WINDOW
+            )
+
+            if result.returncode != 0:
+                self.append_output(
+                    f"Failed to switch StobeServer branch to '{normalized_branch}'.\n",
+                    "red"
+                )
+                error_text = (result.stderr or result.stdout or "").strip()
+                if error_text:
+                    self.append_output(f"{error_text}\n", "red")
+                return False
+
+            self.append_output(
+                f"Successfully switched StobeServer to '{normalized_branch}'.\n",
+                "green"
+            )
+            self.after(1000, lambda: threading.Thread(target=self.check_for_updates, daemon=True).start())
+            self.after(1000, lambda: threading.Thread(target=self.check_nexus_version, daemon=True).start())
+            self.after(1000, lambda: threading.Thread(target=self.check_stobeserver_updates, daemon=True).start())
+            self.after(1000, lambda: threading.Thread(target=self.check_stobe_nexus_version, daemon=True).start())
+            return True
+        except Exception as e:
+            self.append_output(f"Error switching StobeServer branch: {str(e)}\n", "red")
+            return False
+
     def update_all(self):
         """Perform a complete update of both distro and server components."""
-        include_server_update = bool(self.update_herikaserver_var.get())
+        include_herikaserver_update = bool(self.update_herikaserver_var.get())
+        include_stobeserver_update = bool(self.update_stobeserver_var.get())
         target_branch = self.update_target_branch_var.get().strip().lower() or "aiagent"
+        target_stobe_branch = self.update_stobeserver_branch_var.get().strip().lower() or "stobe"
 
-        if include_server_update:
+        if include_herikaserver_update or include_stobeserver_update:
+            selected_components = []
+            if include_herikaserver_update:
+                selected_components.append(f"HerikaServer target branch: {target_branch}")
+            else:
+                selected_components.append("HerikaServer update: disabled")
+            if include_stobeserver_update:
+                selected_components.append(f"StobeServer target branch: {target_stobe_branch}")
+            else:
+                selected_components.append("StobeServer update: disabled")
             confirm_text = (
-                "This will update both the Dwemer Distro and server components.\n\n"
-                f"HerikaServer target branch: {target_branch}\n\n"
+                "This will update the Dwemer Distro and selected server components.\n\n"
+                + "\n".join(selected_components)
+                + "\n\n"
                 "Are you sure?"
             )
         else:
             confirm_text = (
                 "This will update Dwemer Distro only.\n\n"
-                "HerikaServer update is disabled in Update Settings.\n\n"
+                "HerikaServer and StobeServer updates are disabled in Update Settings.\n\n"
                 "Are you sure?"
             )
 
@@ -3750,31 +4172,59 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
             self.append_output("Update canceled.\n")
             return
 
-        # Check aiagent branch plugin alignment when server updates are enabled
-        if include_server_update and target_branch == "aiagent":
+        # Check release branch plugin alignment when server updates are enabled
+        if include_herikaserver_update and target_branch == "aiagent":
             nexus_version = self.get_nexus_version()
             local_version = self.get_local_server_version()
             
             # If versions are misaligned, open Nexus download page
             if nexus_version and local_version and nexus_version != local_version:
                 webbrowser.open("https://www.nexusmods.com/skyrimspecialedition/mods/126330?tab=files")
+
+        if include_stobeserver_update and target_stobe_branch == "stobe":
+            stobe_nexus_version = self.get_stobe_nexus_version()
+            stobe_local_version = self.get_local_stobeserver_version()
+
+            if stobe_nexus_version and stobe_local_version and stobe_nexus_version != stobe_local_version:
+                webbrowser.open("https://www.nexusmods.com/kenshi/mods/1891?tab=files")
         
         threading.Thread(
             target=self.update_all_thread,
-            args=(include_server_update, target_branch),
+            args=(
+                include_herikaserver_update,
+                include_stobeserver_update,
+                target_branch,
+                target_stobe_branch,
+            ),
             daemon=True
         ).start()
 
-    def update_all_thread(self, include_server_update=True, target_branch="aiagent"):
+    def update_all_thread(
+        self,
+        include_herikaserver_update=True,
+        include_stobeserver_update=True,
+        target_branch="aiagent",
+        target_stobe_branch="stobe",
+    ):
         try:
             target_branch = (target_branch or "aiagent").strip().lower()
             if target_branch not in ("aiagent", "dev"):
                 target_branch = "aiagent"
+            target_stobe_branch = (target_stobe_branch or "stobe").strip().lower()
+            if target_stobe_branch not in ("stobe", "dev"):
+                target_stobe_branch = "stobe"
 
-            if include_server_update:
+            server_update_requested = include_herikaserver_update or include_stobeserver_update
+
+            if include_herikaserver_update:
                 if not self.switch_herikaserver_branch(target_branch):
                     return
 
+            if include_stobeserver_update:
+                if not self.switch_stobeserver_branch(target_stobe_branch):
+                    return
+
+            if include_herikaserver_update:
                 branch_ready, branch_info, branch_state = self.ensure_herikaserver_attached_branch()
                 if not branch_ready:
                     self.append_output(
@@ -3791,28 +4241,57 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
                         "yellow"
                     )
 
+            if include_stobeserver_update:
+                stobe_branch_ready, stobe_branch_info, stobe_branch_state = self.ensure_stobeserver_attached_branch()
+                if not stobe_branch_ready:
+                    self.append_output(
+                        "Cannot run full update for StobeServer from rollback state: failed to switch to a tracked branch.\n",
+                        "red"
+                    )
+                    if stobe_branch_info:
+                        self.append_output(f"{stobe_branch_info}\n", "red")
+                    return
+
+                if stobe_branch_state == "recovered":
+                    self.append_output(
+                        f"Detached HEAD detected. Switched StobeServer to branch '{stobe_branch_info}' before full update.\n",
+                        "yellow"
+                    )
+
             # Update status to indicate we're working
             self.after(0, lambda: self.update_status_label.config(
-                text="Running update...",
+                text="Updating...",
                 fg="white"
             ))
 
-            if include_server_update:
+            if include_herikaserver_update and include_stobeserver_update:
                 self.append_output("Starting full system update...\n")
+            elif include_herikaserver_update:
+                self.append_output("Starting core system update + HerikaServer update...\n")
+            elif include_stobeserver_update:
+                self.append_output("Starting core system update + StobeServer update...\n")
             else:
-                self.append_output("Starting core system update (HerikaServer skipped)...\n")
+                self.append_output("Starting core system update (HerikaServer and StobeServer skipped)...\n")
             
             self.append_output("\nSTEP 1: Core System Update\n", "green")
-            self.append_output("Running update script...\n")
+            self.append_output("Executing update script...\n")
             
-            if include_server_update:
+            if server_update_requested:
+                gws_flags = []
+                if not include_herikaserver_update:
+                    gws_flags.append("--skip-herika")
+                if not include_stobeserver_update:
+                    gws_flags.append("--skip-stobe")
+                gws_cmd = "/usr/local/bin/update_gws"
+                if gws_flags:
+                    gws_cmd = f"{gws_cmd} {' '.join(gws_flags)}"
                 combined_cmd = [
                     "wsl", "-d", "DwemerAI4Skyrim3", "-u", "dwemer", "--", "bash", "-c",
                     "cd /home/dwemer/dwemerdistro && "
                     "git fetch origin && git reset --hard origin/main && "
                     "chmod +x update.sh && echo 'dwemer' | sudo -S ./update.sh && "
                     "echo '=====MARKER:BEGIN_SERVER_UPDATE=====' && "
-                    "/usr/local/bin/update_gws"
+                    + gws_cmd
                 ]
             else:
                 combined_cmd = [
@@ -3846,7 +4325,7 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
             # Read output line by line
             for line in update_process.stdout:
                 # Check for our marker line
-                if include_server_update and "=====MARKER:BEGIN_SERVER_UPDATE=====" in line:
+                if server_update_requested and "=====MARKER:BEGIN_SERVER_UPDATE=====" in line:
                     distro_update_complete = True
                     server_update_started = True
                     self.append_output("\nSTEP 2: Dwemer Distro Server & Components Update\n", "green")
@@ -3856,64 +4335,96 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
                 self.append_output(line)
 
                 lowered = line.lower()
-                if include_server_update and (
+                if server_update_requested and (
                     "you are not currently on a branch" in lowered
                     or "please specify which branch you want to merge with" in lowered
                 ):
                     branch_error_detected = True
                 
                 # Check if server update is complete (look for common completion messages)
-                if include_server_update and server_update_started and ("Successfully" in line or "Completed" in line):
+                if server_update_requested and server_update_started and ("Successfully" in line or "Completed" in line):
                     server_update_complete = True
             
             # Process has ended
             update_process.wait()
 
-            if not include_server_update:
+            if not server_update_requested:
                 distro_update_complete = update_process.returncode == 0
             
             # Check the final state
-            if update_process.returncode == 0 and distro_update_complete and (not include_server_update or not branch_error_detected):
+            if update_process.returncode == 0 and distro_update_complete and (not server_update_requested or not branch_error_detected):
                 # Get the current branch for the success message
-                current_branch = self.get_current_branch() or "unknown"
-                
-                if include_server_update and server_update_complete:
-                    self.append_output(f"Full system update completed successfully! Branch: {current_branch}\n", "green")
-                elif include_server_update:
-                    self.append_output(f"Update completed. Branch: {current_branch}\n", "green")
+                status_parts = []
+                if include_herikaserver_update:
+                    current_branch = self.get_current_branch() or "unknown"
+                    status_parts.append(f"HerikaServer: {current_branch}")
+                if include_stobeserver_update:
+                    current_stobe_branch = self.get_stobeserver_current_branch() or "unknown"
+                    status_parts.append(f"StobeServer: {current_stobe_branch}")
+
+                if server_update_requested and server_update_complete:
+                    self.append_output(
+                        f"System update completed successfully! {' | '.join(status_parts)}\n",
+                        "green"
+                    )
+                elif server_update_requested:
+                    self.append_output(
+                        f"Update completed. {' | '.join(status_parts)}\n",
+                        "green"
+                    )
                 else:
-                    self.append_output("Distro update completed successfully. HerikaServer update was skipped.\n", "green")
+                    self.append_output(
+                        "Distro update completed successfully. HerikaServer and StobeServer updates were skipped.\n",
+                        "green"
+                    )
                     
                 # Recheck version and status after update
                 self.after(2000, lambda: threading.Thread(target=self.check_for_updates, daemon=True).start())
+                self.after(2000, lambda: threading.Thread(target=self.check_nexus_version, daemon=True).start())
+                self.after(2000, lambda: threading.Thread(target=self.check_stobeserver_updates, daemon=True).start())
+                self.after(2000, lambda: threading.Thread(target=self.check_stobe_nexus_version, daemon=True).start())
             else:
                 # Something went wrong
                 if not distro_update_complete:
                     self.append_output("Distro update did not complete successfully.\n", "red")
-                elif include_server_update and branch_error_detected:
+                elif server_update_requested and branch_error_detected:
                     self.append_output("Server update failed: repository is not on a branch.\n", "red")
-                elif include_server_update and not server_update_complete:
+                elif server_update_requested and not server_update_complete:
                     self.append_output("Server update may not have completed successfully.\n", "red")
                 else:
                     self.append_output("Update may have encountered issues. Check logs above.\n", "red")
-                
-                self.after(0, lambda: self.update_status_label.config(
-                    text="Dwemer Distro Server: Update may have issues - see log",
-                    fg="red"
-                ))
+
+                if include_herikaserver_update:
+                    self.after(0, lambda: self.update_status_label.config(
+                        text="HerikaServer: Update may have issues - see log",
+                        fg="red"
+                    ))
+                if include_stobeserver_update:
+                    self.after(0, lambda: self.stobe_update_status_label.config(
+                        text="StobeServer: Update may have issues - see log",
+                        fg="red"
+                    ))
                 
         except Exception as e:
             self.append_output(f"Error during update: {str(e)}\n", "red")
             import traceback
             self.append_output(f"Traceback: {traceback.format_exc()}\n", "red")
-            self.after(0, lambda: self.update_status_label.config(
-                text="Dwemer Distro Server: Update error - see log",
-                fg="red"
-            ))
+            if include_herikaserver_update:
+                self.after(0, lambda: self.update_status_label.config(
+                    text="HerikaServer: Update error - see log",
+                    fg="red"
+                ))
+            if include_stobeserver_update:
+                self.after(0, lambda: self.stobe_update_status_label.config(
+                    text="StobeServer: Update error - see log",
+                    fg="red"
+                ))
         finally:
             # Recheck versions after update
             self.after(2000, lambda: threading.Thread(target=self.check_for_updates, daemon=True).start())
             self.after(2000, lambda: threading.Thread(target=self.check_nexus_version, daemon=True).start())
+            self.after(2000, lambda: threading.Thread(target=self.check_stobeserver_updates, daemon=True).start())
+            self.after(2000, lambda: threading.Thread(target=self.check_stobe_nexus_version, daemon=True).start())
 
 if __name__ == "__main__":
     app = DwemerDistroLauncher()
