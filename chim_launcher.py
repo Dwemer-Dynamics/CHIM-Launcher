@@ -2193,8 +2193,40 @@ class DwemerDistroLauncher(tk.Tk):
             return True, output.split(":", 1)[1].strip(), "recovered"
         return False, "Could not determine branch state.", "failed"
 
+    def ensure_stobeserver_repo_exists(self, target_branch="stobe"):
+        """Ensure StobeServer repo exists in WSL; clone it on first install if missing."""
+        normalized_branch = (target_branch or "stobe").strip().lower()
+        if normalized_branch not in ("stobe", "dev"):
+            normalized_branch = "stobe"
+
+        result = self.run_wsl_bash_capture(
+            "if [ -d /var/www/html/StobeServer/.git ]; then "
+            "echo EXISTS; exit 0; "
+            "fi; "
+            "cd /var/www/html || { echo ERROR:BASE_DIR_MISSING; exit 1; }; "
+            "rm -rf /var/www/html/StobeServer && "
+            f"git clone -b {normalized_branch} https://github.com/Dwemer-Dynamics/StobeServer.git StobeServer >/dev/null 2>&1 || "
+            "{ echo ERROR:CLONE_FAILED; exit 1; }; "
+            f"echo CLONED:{normalized_branch}"
+        )
+
+        output = result.stdout.strip()
+        if result.returncode != 0:
+            error_text = result.stderr.strip() if result.stderr else output
+            return False, error_text or "Failed to bootstrap StobeServer repository.", "failed"
+
+        if output == "EXISTS":
+            return True, "exists", "exists"
+        if output.startswith("CLONED:"):
+            return True, output.split(":", 1)[1].strip(), "cloned"
+        return False, "Could not determine StobeServer repository state.", "failed"
+
     def ensure_stobeserver_attached_branch(self):
         """Ensure StobeServer is on a tracked branch before updates."""
+        repo_ready, repo_info, _repo_state = self.ensure_stobeserver_repo_exists("stobe")
+        if not repo_ready:
+            return False, repo_info, "failed"
+
         result = self.run_wsl_bash_capture(
             "cd /var/www/html/StobeServer && "
             "current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo ''); "
@@ -4086,6 +4118,22 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
                     "red"
                 )
                 return False
+
+            repo_ready, repo_info, repo_state = self.ensure_stobeserver_repo_exists(normalized_branch)
+            if not repo_ready:
+                self.append_output(
+                    "Failed to prepare StobeServer repository for branch switch.\n",
+                    "red"
+                )
+                if repo_info:
+                    self.append_output(f"{repo_info}\n", "red")
+                return False
+
+            if repo_state == "cloned":
+                self.append_output(
+                    f"StobeServer was missing and has been cloned on branch '{repo_info}'.\n",
+                    "yellow"
+                )
 
             current_branch = self.get_stobeserver_current_branch()
             if current_branch == normalized_branch:
