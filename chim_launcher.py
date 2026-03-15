@@ -3864,7 +3864,7 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
         self.after(
             0,
             lambda: self.nexus_version_label.config(
-                text=f"CHIM Nexus: {chim_version} | Stobe Nexus: {stobe_version}",
+                text=f"CHIM Nexus: {chim_version} | STOBE Nexus: {stobe_version}",
                 fg=text_color,
                 cursor="arrow",
                 underline=False
