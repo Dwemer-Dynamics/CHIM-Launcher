@@ -2207,6 +2207,9 @@ class DwemerDistroLauncher(tk.Tk):
             "rm -rf /var/www/html/StobeServer && "
             f"git clone -b {normalized_branch} https://github.com/Dwemer-Dynamics/StobeServer.git StobeServer >/dev/null 2>&1 || "
             "{ echo ERROR:CLONE_FAILED; exit 1; }; "
+            "mkdir -p /var/www/html/StobeServer/log || { echo ERROR:LOG_DIR_FAILED; exit 1; }; "
+            ": > /var/www/html/StobeServer/log/stobe_import.log || { echo ERROR:LOG_RESET_FAILED; exit 1; }; "
+            ": > /var/www/html/StobeServer/log/stobeserver.log || { echo ERROR:LOG_RESET_FAILED; exit 1; }; "
             f"echo CLONED:{normalized_branch}"
         )
 
