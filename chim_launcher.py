@@ -3516,14 +3516,19 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
             "/var/www/html/HerikaServer/log/chim.log",
             "/var/www/html/HerikaServer/log/output_to_plugin.log",
             "/var/www/html/HerikaServer/log/context_sent_to_llm.log",
+            # STOBE logs
+            "/var/www/html/StobeServer/log/stobe.log",
+            "/var/www/html/StobeServer/log/stobeserver.log",
+            "/var/www/html/StobeServer/log/output_from_llm.log",
+            "/var/www/html/StobeServer/log/context_sent_to_llm.log",
             # DISTRO logs
             "/home/dwemer/xtts-api-server/log.txt",
             "/home/dwemer/chatterbox/log.txt",
+            "/home/dwemer/pocket-tts/log.txt",
             "/home/dwemer/minime-t5/log.txt",
             "/home/dwemer/remote-faster-whisper/log.txt",
             "/home/dwemer/MeloTTS/melo/log.txt", # Corrected path
             "/home/dwemer/piper/log.txt",
-            "/home/dwemer/mimic3/log.txt",
             "/home/dwemer/parakeet-api-server/log.txt"
         ]
         
