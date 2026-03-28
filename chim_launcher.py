@@ -555,8 +555,7 @@ class DwemerDistroLauncher(tk.Tk):
 
         update_controls_frame = tk.Frame(server_updates_frame, bg="#2C2C2C")
         update_controls_frame.pack(fill=tk.X, pady=5)
-        update_controls_frame.grid_columnconfigure(0, weight=9)
-        update_controls_frame.grid_columnconfigure(1, weight=1)
+        update_controls_frame.grid_columnconfigure(0, weight=1)
 
         self.update_button = tk.Button(
             update_controls_frame,
@@ -564,41 +563,92 @@ class DwemerDistroLauncher(tk.Tk):
             command=self.update_all,
             **button_style
         )
-        self.update_button.grid(row=0, column=0, sticky="ew", padx=(0, 4))
+        self.update_button.grid(row=0, column=0, sticky="ew")
         self.add_hover_effects(self.update_button, standard_button_bg, standard_button_hover_bg)
 
-        settings_button_style = button_style.copy()
-        settings_button_style.update({
-            'font': ("Trebuchet MS", 14, "bold"),
-            'width': 2
-        })
-        self.update_settings_button = tk.Button(
-            update_controls_frame,
-            text="\u2699",
-            command=self.open_update_settings_menu,
-            **settings_button_style
-        )
-        self.update_settings_button.grid(row=0, column=1, sticky="ew")
-        self.add_hover_effects(self.update_settings_button, standard_button_bg, standard_button_hover_bg)
+        # HerikaServer updater row (checkbox + branch selector + status text)
+        herika_update_row = tk.Frame(server_updates_frame, bg="#2C2C2C")
+        herika_update_row.pack(fill=tk.X, pady=(5, 2))
+        herika_update_row.grid_columnconfigure(2, weight=1)
 
-        # Create and pack HerikaServer update status label
+        self.update_herikaserver_checkbox = tk.Checkbutton(
+            herika_update_row,
+            variable=self.update_herikaserver_var,
+            command=self.save_update_include_settings,
+            bg="#2C2C2C",
+            fg="white",
+            activebackground="#2C2C2C",
+            activeforeground="white",
+            selectcolor="#5E0505",
+            onvalue=True,
+            offvalue=False,
+            state=tk.NORMAL,
+            highlightthickness=0,
+            cursor="hand2"
+        )
+        self.update_herikaserver_checkbox.grid(row=0, column=0, padx=(0, 4), sticky="w")
+
+        self.herika_branch_dropdown = ttk.Combobox(
+            herika_update_row,
+            textvariable=self.update_target_branch_var,
+            values=["aiagent", "dev"],
+            state="readonly",
+            width=9
+        )
+        self.herika_branch_dropdown.grid(row=0, column=1, padx=(0, 8), sticky="w")
+        self.herika_branch_dropdown.bind("<<ComboboxSelected>>", self.on_herikaserver_branch_selected)
+
         self.update_status_label = tk.Label(
-            server_updates_frame,
+            herika_update_row,
             text="HerikaServer: ...",
             fg="white",
             bg="#2C2C2C",
+            anchor="w",
             font=("Trebuchet MS", 10)
         )
-        self.update_status_label.pack(pady=5, fill=tk.X)
+        self.update_status_label.grid(row=0, column=2, sticky="w")
+
+        # StobeServer updater row (checkbox + branch selector + status text)
+        stobe_update_row = tk.Frame(server_updates_frame, bg="#2C2C2C")
+        stobe_update_row.pack(fill=tk.X, pady=(2, 5))
+        stobe_update_row.grid_columnconfigure(2, weight=1)
+
+        self.update_stobeserver_checkbox = tk.Checkbutton(
+            stobe_update_row,
+            variable=self.update_stobeserver_var,
+            command=self.save_update_include_settings,
+            bg="#2C2C2C",
+            fg="white",
+            activebackground="#2C2C2C",
+            activeforeground="white",
+            selectcolor="#5E0505",
+            onvalue=True,
+            offvalue=False,
+            state=tk.NORMAL,
+            highlightthickness=0,
+            cursor="hand2"
+        )
+        self.update_stobeserver_checkbox.grid(row=0, column=0, padx=(0, 4), sticky="w")
+
+        self.stobe_branch_dropdown = ttk.Combobox(
+            stobe_update_row,
+            textvariable=self.update_stobeserver_branch_var,
+            values=["stobe", "dev"],
+            state="readonly",
+            width=9
+        )
+        self.stobe_branch_dropdown.grid(row=0, column=1, padx=(0, 8), sticky="w")
+        self.stobe_branch_dropdown.bind("<<ComboboxSelected>>", self.on_stobeserver_branch_selected)
 
         self.stobe_update_status_label = tk.Label(
-            server_updates_frame,
+            stobe_update_row,
             text="StobeServer: ...",
             fg="white",
             bg="#2C2C2C",
+            anchor="w",
             font=("Trebuchet MS", 10)
         )
-        self.stobe_update_status_label.pack(pady=5, fill=tk.X)
+        self.stobe_update_status_label.grid(row=0, column=2, sticky="w")
 
         # Create and pack combined CHIM/Stobe Nexus version label
         self.nexus_version_label = tk.Label(
@@ -2801,13 +2851,12 @@ class DwemerDistroLauncher(tk.Tk):
             startupinfo.wShowWindow = 0  # SW_HIDE
 
             cmd = [
-                "wsl", "-d", "DwemerAI4Skyrim3", "--", "bash", "-lc",
-                "if [ -f /home/dwemer/.update_include_herika ]; then "
-                "cat /home/dwemer/.update_include_herika; "
-                "else echo 1 > /home/dwemer/.update_include_herika; echo 1; fi; "
-                "if [ -f /home/dwemer/.update_include_stobe ]; then "
-                "cat /home/dwemer/.update_include_stobe; "
-                "else echo 1 > /home/dwemer/.update_include_stobe; echo 1; fi"
+                "wsl", "-d", "DwemerAI4Skyrim3", "-u", "root", "--", "bash", "-lc",
+                "mkdir -p /home/dwemer; "
+                "if [ ! -f /home/dwemer/.update_include_herika ]; then echo 1 > /home/dwemer/.update_include_herika; fi; "
+                "if [ ! -f /home/dwemer/.update_include_stobe ]; then echo 1 > /home/dwemer/.update_include_stobe; fi; "
+                "sed -n '1p' /home/dwemer/.update_include_herika; "
+                "sed -n '1p' /home/dwemer/.update_include_stobe"
             ]
             result = subprocess.run(
                 cmd,
@@ -2818,9 +2867,13 @@ class DwemerDistroLauncher(tk.Tk):
             )
 
             if result.returncode == 0:
-                values = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+                values = [line.strip() for line in result.stdout.splitlines()]
                 herika_value = values[0] if len(values) > 0 else "1"
                 stobe_value = values[1] if len(values) > 1 else "1"
+                if herika_value not in ("0", "1"):
+                    herika_value = "1"
+                if stobe_value not in ("0", "1"):
+                    stobe_value = "1"
                 self.update_herikaserver_var.set(herika_value == "1")
                 self.update_stobeserver_var.set(stobe_value == "1")
             else:
@@ -2837,10 +2890,12 @@ class DwemerDistroLauncher(tk.Tk):
             startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
             startupinfo.wShowWindow = 0  # SW_HIDE
 
-            herika_value = "1" if self.update_herikaserver_var.get() else "0"
-            stobe_value = "1" if self.update_stobeserver_var.get() else "0"
+            herika_raw = str(self.update_herikaserver_var.get()).strip().lower()
+            stobe_raw = str(self.update_stobeserver_var.get()).strip().lower()
+            herika_value = "1" if herika_raw in ("1", "true", "yes", "on") else "0"
+            stobe_value = "1" if stobe_raw in ("1", "true", "yes", "on") else "0"
             cmd = [
-                "wsl", "-d", "DwemerAI4Skyrim3", "--", "bash", "-lc",
+                "wsl", "-d", "DwemerAI4Skyrim3", "-u", "root", "--", "bash", "-lc",
                 f"echo {herika_value} > /home/dwemer/.update_include_herika && "
                 f"echo {stobe_value} > /home/dwemer/.update_include_stobe"
             ]
@@ -3199,19 +3254,12 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
     def get_current_stobeserver_version(self):
         """Get StobeServer date version from .version.txt."""
         try:
-            candidates = [
-                r'\\wsl$\DwemerAI4Skyrim3\var\www\html\StobeServer\.version.txt',
-                r'\\wsl$\DwemerAI4Skyrim3\var\www\html\StobeServer\version.txt',
-            ]
-            for version_file_path in candidates:
-                if not os.path.exists(version_file_path):
-                    continue
-                with open(version_file_path, 'r') as file:
-                    version = file.read().strip()
-                    if version:
-                        return version
-            return None
-        except Exception:
+            version_file_path = r'\\wsl$\DwemerAI4Skyrim3\var\www\html\StobeServer\.version.txt'
+            with open(version_file_path, 'r') as file:
+                version = file.read().strip()
+                return version if version else None
+        except Exception as e:
+            print(f"Exception in get_current_stobeserver_version: {e}")
             return None
 
     def get_local_stobeserver_version(self):
@@ -3262,18 +3310,14 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
                 print("Could not determine StobeServer current branch")
                 return None
 
-            candidate_urls = [
-                f"https://raw.githubusercontent.com/Dwemer-Dynamics/StobeServer/{current_branch}/.version.txt",
-                f"https://raw.githubusercontent.com/Dwemer-Dynamics/StobeServer/{current_branch}/version.txt",
-            ]
-            for url in candidate_urls:
-                response = requests.get(url, timeout=2)
-                if response.status_code == 200:
-                    text = response.text.strip()
-                    if text:
-                        return text
-            print("get_stobeserver_git_version failed for all version file candidates")
-            return None
+            url = f"https://raw.githubusercontent.com/Dwemer-Dynamics/StobeServer/{current_branch}/.version.txt"
+
+            response = requests.get(url, timeout=2)
+            if response.status_code == 200:
+                return response.text.strip()
+            else:
+                print(f"get_stobeserver_git_version failed with status code: {response.status_code}")
+                return None
         except Exception as e:
             print(f"Exception in get_stobeserver_git_version: {e}")
             return None
@@ -3402,6 +3446,9 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
         for t in threads:
             t.join() # Wait for all threads to complete
 
+        if current_branch[0] in ("aiagent", "dev"):
+            self.after(0, self.update_target_branch_var.set, current_branch[0])
+
         branch_text = f" ({current_branch[0]})" if current_branch[0] else ""
         # Format the date version for display (2025121413 -> 12-14-2025)
         date_display = self.format_date_version(current_version[0]) if current_version[0] else "N/A"
@@ -3467,6 +3514,9 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
             t.start()
         for t in threads:
             t.join()
+
+        if current_branch[0] in ("stobe", "dev"):
+            self.after(0, self.update_stobeserver_branch_var.set, current_branch[0])
 
         branch_text = f" ({current_branch[0]})" if current_branch[0] else ""
         date_display = self.format_date_version(current_version[0]) if current_version[0] else "N/A"
@@ -3895,6 +3945,24 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
         self.latest_stobe_nexus_version = nexus_version if nexus_version else "N/A"
         self.refresh_combined_nexus_label()
 
+    def on_herikaserver_branch_selected(self, _event=None):
+        """Switch HerikaServer when branch is selected from updater row."""
+        target_branch = self.update_target_branch_var.get().strip().lower()
+        threading.Thread(
+            target=self.switch_herikaserver_branch,
+            args=(target_branch,),
+            daemon=True
+        ).start()
+
+    def on_stobeserver_branch_selected(self, _event=None):
+        """Switch StobeServer when branch is selected from updater row."""
+        target_branch = self.update_stobeserver_branch_var.get().strip().lower()
+        threading.Thread(
+            target=self.switch_stobeserver_branch,
+            args=(target_branch,),
+            daemon=True
+        ).start()
+
     def open_update_settings_menu(self):
         """Open settings for updater behavior and server branch selection."""
         settings_window = tk.Toplevel(self)
@@ -4219,7 +4287,7 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
         else:
             confirm_text = (
                 "This will update Dwemer Distro only.\n\n"
-                "HerikaServer and StobeServer updates are disabled in Update Settings.\n\n"
+                "HerikaServer and StobeServer updates are disabled in the Updater section.\n\n"
                 "Are you sure?"
             )
 
