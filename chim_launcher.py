@@ -18,6 +18,7 @@ import urllib.request
 import io # Added for reading request body
 import tkinter.filedialog # Added for save dialog
 import shlex
+from collections import deque
 
 import socket
 import threading
@@ -3556,10 +3557,17 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
         else:
             self.append_output("Diagnostic file creation cancelled.\n")
 
+    def read_local_log_tail(self, file_path, max_lines=1000):
+        """Read up to max_lines from the end of a local text log file."""
+        with open(file_path, 'r', encoding='utf-8', errors='ignore') as log_handle:
+            return "".join(deque(log_handle, maxlen=max_lines))
+
     def generate_diagnostics_thread(self):
-        """Gathers logs from specified files in WSL and saves them to a user-chosen file."""
+        """Gathers logs from WSL and local Windows files, then saves them."""
         self.append_output("Starting diagnostic log generation...")
-        
+
+        max_log_lines = 1000
+
         log_files = [
             # SERVER logs
             "/var/www/html/HerikaServer/log/output_from_llm.log",
@@ -3581,7 +3589,24 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
             "/home/dwemer/piper/log.txt",
             "/home/dwemer/parakeet-api-server/log.txt"
         ]
-        
+
+        local_log_groups = [
+            {
+                "name": "AIAgent.log",
+                "paths": [
+                    r"%USERPROFILE%\Documents\My Games\Skyrim Special Edition\SKSE\Plugins\AIAgent.log",
+                    r"%USERPROFILE%\Documents\My Games\Skyrim\SKSE\Plugins\AIAgent.log",
+                    r"%USERPROFILE%\Documents\My Games\Skyrim.INI\SKSE\Plugins\AIAgent.log"
+                ]
+            },
+            {
+                "name": "Papyrus.0.log",
+                "paths": [
+                    r"%USERPROFILE%\Documents\My Games\Skyrim Special Edition\Logs\Script\Papyrus.0.log"
+                ]
+            }
+        ]
+
         combined_log_content = "" # Initialize empty string for combined logs
         files_not_found = []
 
@@ -3593,7 +3618,7 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
             self.append_output(f"Reading {log_file}...")
             cmd = [
                 "wsl", "-d", "DwemerAI4Skyrim3", "--",
-                "tail", "-n", "1000", log_file
+                "tail", "-n", str(max_log_lines), log_file
             ]
             try:
                 # Use run instead of Popen to capture output directly
@@ -3623,6 +3648,44 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
                 self.append_output(f"Error running tail for {log_file}: {e}\n", "red")
                 files_not_found.append(log_file)
 
+        user_profile = os.environ.get("USERPROFILE", "").strip()
+        if user_profile:
+            for local_log in local_log_groups:
+                selected_template = None
+                selected_path = None
+
+                for path_template in local_log["paths"]:
+                    resolved_path = os.path.expandvars(path_template)
+                    if os.path.exists(resolved_path):
+                        selected_template = path_template
+                        selected_path = resolved_path
+                        break
+
+                if not selected_path:
+                    files_not_found.append(local_log["name"])
+                    self.append_output(
+                        f"  -> Could not locate {local_log['name']} under %USERPROFILE%.\n",
+                        "yellow"
+                    )
+                    continue
+
+                self.append_output(f"Reading {selected_template}...")
+                try:
+                    local_log_tail = self.read_local_log_tail(selected_path, max_log_lines)
+                    combined_log_content += f"--- Start of {selected_template} ---\n"
+                    combined_log_content += f"# Resolved path: {selected_path}\n"
+                    combined_log_content += local_log_tail
+                    combined_log_content += f"\n--- End of {selected_template} ---\n\n"
+                except Exception as e:
+                    files_not_found.append(selected_template)
+                    self.append_output(f"  -> Could not read {selected_template}: {e}\n", "red")
+        else:
+            files_not_found.append("%USERPROFILE%")
+            self.append_output(
+                "Warning: USERPROFILE is not set; skipping local Skyrim logs.\n",
+                "yellow"
+            )
+
         if files_not_found:
             self.append_output(f"Warning: Could not read the following files: {', '.join(files_not_found)}\n", "yellow")
 
@@ -3651,15 +3714,17 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
                         with open(save_path, 'w', encoding='utf-8') as f:
                             f.write(combined_log_content)
                         self.append_output(f"\nDiagnostics file saved to: {save_path}\n", "green") # Added newline at the start
-                        # Add the user message about AIAgent.log
-                        user_message = (
-                            "MAKE SURE TO SHARE YOUR AIAgent.log\n"
-                            "Located in:\n"
-                            r"C:\Users\YOURUSER\Documents\My Games\Skyrim Special Edition\SKSE\Plugins\AIAgent.log"
-                            "\nOR\n"
-                            r"C:\Users\YOURUSER\Documents\My Games\Skyrim\SKSE\Plugins\AIAgent.log"
+                        local_path_note = (
+                            "Attempted local log paths via %USERPROFILE%:\n"
+                            r"%USERPROFILE%\Documents\My Games\Skyrim Special Edition\SKSE\Plugins\AIAgent.log"
+                            "\n"
+                            r"%USERPROFILE%\Documents\My Games\Skyrim\SKSE\Plugins\AIAgent.log"
+                            "\n"
+                            r"%USERPROFILE%\Documents\My Games\Skyrim.INI\SKSE\Plugins\AIAgent.log"
+                            "\n"
+                            r"%USERPROFILE%\Documents\My Games\Skyrim Special Edition\Logs\Script\Papyrus.0.log"
                         )
-                        self.append_output(f"\n{user_message}\n", "yellow") # Use yellow for visibility
+                        self.append_output(f"\n{local_path_note}\n")
                     except Exception as e:
                         self.append_output(f"Error saving diagnostics file: {e}\n", "red")
                         messagebox.showerror("Save Error", f"Could not save the diagnostics file:\n{e}")
