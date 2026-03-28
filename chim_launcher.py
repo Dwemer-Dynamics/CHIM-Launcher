@@ -2251,17 +2251,31 @@ class DwemerDistroLauncher(tk.Tk):
             normalized_branch = "stobe"
 
         result = self.run_wsl_bash_capture(
-            "if [ -d /var/www/html/StobeServer/.git ]; then "
-            "echo EXISTS; exit 0; "
+            "base_dir=/var/www/html; "
+            "repo_path=/var/www/html/StobeServer; "
+            "state=EXISTS; "
+            "mkdir -p \"$base_dir\" || { echo ERROR:BASE_DIR_CREATE_FAILED; exit 1; }; "
+            "if [ ! -d \"$repo_path/.git\" ]; then "
+            "state=CLONED; "
+            "for legacy_path in /var/www/html/stobeserver /var/www/html/stoberser; do "
+            "if [ -d \"$legacy_path/.git\" ]; then "
+            "rm -rf \"$repo_path\"; "
+            "mv \"$legacy_path\" \"$repo_path\" || { echo ERROR:MIGRATE_FAILED:$legacy_path; exit 1; }; "
+            "state=MIGRATED:${legacy_path}; "
+            "break; "
             "fi; "
-            "cd /var/www/html || { echo ERROR:BASE_DIR_MISSING; exit 1; }; "
-            "rm -rf /var/www/html/StobeServer && "
-            f"git clone -b {normalized_branch} https://github.com/Dwemer-Dynamics/StobeServer.git StobeServer >/dev/null 2>&1 || "
+            "done; "
+            "if [ ! -d \"$repo_path/.git\" ]; then "
+            "rm -rf \"$repo_path\" && "
+            f"git clone -b {normalized_branch} https://github.com/Dwemer-Dynamics/StobeServer.git \"$repo_path\" >/dev/null 2>&1 || "
             "{ echo ERROR:CLONE_FAILED; exit 1; }; "
-            "mkdir -p /var/www/html/StobeServer/log || { echo ERROR:LOG_DIR_FAILED; exit 1; }; "
-            ": > /var/www/html/StobeServer/log/stobe_import.log || { echo ERROR:LOG_RESET_FAILED; exit 1; }; "
-            ": > /var/www/html/StobeServer/log/stobeserver.log || { echo ERROR:LOG_RESET_FAILED; exit 1; }; "
-            f"echo CLONED:{normalized_branch}"
+            f"state=CLONED:{normalized_branch}; "
+            "fi; "
+            "fi; "
+            "mkdir -p \"$repo_path/log\" || { echo ERROR:LOG_DIR_FAILED; exit 1; }; "
+            ": > \"$repo_path/log/stobe_import.log\" || { echo ERROR:LOG_RESET_FAILED; exit 1; }; "
+            ": > \"$repo_path/log/stobeserver.log\" || { echo ERROR:LOG_RESET_FAILED; exit 1; }; "
+            "echo \"$state\""
         )
 
         output = result.stdout.strip()
@@ -2271,6 +2285,8 @@ class DwemerDistroLauncher(tk.Tk):
 
         if output == "EXISTS":
             return True, "exists", "exists"
+        if output.startswith("MIGRATED:"):
+            return True, output.split(":", 1)[1].strip(), "migrated"
         if output.startswith("CLONED:"):
             return True, output.split(":", 1)[1].strip(), "cloned"
         return False, "Could not determine StobeServer repository state.", "failed"
@@ -4275,6 +4291,11 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
                     f"StobeServer was missing and has been cloned on branch '{repo_info}'.\n",
                     "yellow"
                 )
+            elif repo_state == "migrated":
+                self.append_output(
+                    f"Recovered StobeServer from legacy path '{repo_info}' and migrated to /var/www/html/StobeServer.\n",
+                    "yellow"
+                )
 
             current_branch = self.get_stobeserver_current_branch()
             if current_branch == normalized_branch:
@@ -4304,6 +4325,46 @@ export CUDA_VISIBLE_DEVICES={gpu_value}
             )
 
             if result.returncode != 0:
+                error_text = (result.stderr or result.stdout or "").strip()
+                if "no such file or directory" in error_text.lower():
+                    self.append_output(
+                        "StobeServer path missing during branch switch. Retrying after repository bootstrap...\n",
+                        "yellow"
+                    )
+                    retry_ready, retry_info, retry_state = self.ensure_stobeserver_repo_exists(normalized_branch)
+                    if retry_ready:
+                        if retry_state == "cloned":
+                            self.append_output(
+                                f"StobeServer cloned on retry to branch '{retry_info}'.\n",
+                                "yellow"
+                            )
+                        elif retry_state == "migrated":
+                            self.append_output(
+                                f"StobeServer legacy path '{retry_info}' migrated on retry.\n",
+                                "yellow"
+                            )
+
+                        result = subprocess.run(
+                            switch_cmd,
+                            capture_output=True,
+                            text=True,
+                            startupinfo=startupinfo,
+                            creationflags=subprocess.CREATE_NO_WINDOW
+                        )
+                        if result.returncode == 0:
+                            self.append_output(
+                                f"Successfully switched StobeServer to '{normalized_branch}'.\n",
+                                "green"
+                            )
+                            self.after(1000, lambda: threading.Thread(target=self.check_for_updates, daemon=True).start())
+                            self.after(1000, lambda: threading.Thread(target=self.check_nexus_version, daemon=True).start())
+                            self.after(1000, lambda: threading.Thread(target=self.check_stobeserver_updates, daemon=True).start())
+                            self.after(1000, lambda: threading.Thread(target=self.check_stobe_nexus_version, daemon=True).start())
+                            return True
+
+                    elif retry_info:
+                        self.append_output(f"{retry_info}\n", "red")
+
                 self.append_output(
                     f"Failed to switch StobeServer branch to '{normalized_branch}'.\n",
                     "red"
