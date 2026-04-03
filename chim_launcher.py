@@ -2209,14 +2209,20 @@ class DwemerDistroLauncher(tk.Tk):
         startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
         startupinfo.wShowWindow = 0  # SW_HIDE
 
+        # wsl.exe can pre-expand unescaped $VARS before bash sees the command.
+        # Escape dollars so bash receives and expands them correctly.
+        safe_command = (bash_command or "").replace("$", r"\$")
+
         cmd = [
             "wsl", "-d", "DwemerAI4Skyrim3", "-u", "dwemer", "--",
-            "bash", "-lc", bash_command
+            "bash", "-lc", safe_command
         ]
         return subprocess.run(
             cmd,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             startupinfo=startupinfo,
             creationflags=subprocess.CREATE_NO_WINDOW
         )
