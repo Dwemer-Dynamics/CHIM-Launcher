@@ -2161,6 +2161,7 @@ class DwemerDistroLauncher(tk.Tk):
             ("View Memory Usage", self.view_memory_usage),
             ("Rollback HerikaServer", lambda: self.open_rollback_menu("herika")),
             ("Rollback StobeServer", lambda: self.open_rollback_menu("stobe")),
+            ("Fix WSL DNS (GitHub)", self.fix_wsl_dns_resolution),
             ("Configure CUDA GPU", self.open_cuda_config_menu),
         ]
         for text, command in action_commands:
@@ -2202,6 +2203,73 @@ class DwemerDistroLauncher(tk.Tk):
         """Opens a new terminal window with the specified command."""
         cmd = 'wsl -d DwemerAI4Skyrim3 -u dwemer -- /usr/local/bin/terminal'
         threading.Thread(target=self.run_command_in_new_window, args=(cmd,), daemon=True).start()
+
+    def fix_wsl_dns_resolution(self):
+        """Repair WSL DNS resolver config for GitHub connectivity."""
+        confirm = messagebox.askyesno(
+            "Fix WSL DNS",
+            "This will update WSL DNS settings, restart WSL, and test github.com resolution.\n\nContinue?"
+        )
+        if not confirm:
+            self.append_output("WSL DNS repair canceled.\n")
+            return
+
+        threading.Thread(target=self.fix_wsl_dns_resolution_thread, daemon=True).start()
+
+    def fix_wsl_dns_resolution_thread(self):
+        """Apply DNS fix inside WSL and validate github.com lookup."""
+        try:
+            self.append_output("Starting WSL DNS repair...\n")
+
+            dns_fix_command = (
+                "echo 'dwemer' | sudo -S sh -c 'printf \"[network]\\n"
+                "generateResolvConf = false\\n\" > /etc/wsl.conf' && "
+                "echo 'dwemer' | sudo -S rm -f /etc/resolv.conf && "
+                "echo 'dwemer' | sudo -S sh -c 'printf \"nameserver 1.1.1.1\\n"
+                "nameserver 8.8.8.8\\n\" > /etc/resolv.conf' && "
+                "echo 'dwemer' | sudo -S chmod 644 /etc/resolv.conf && "
+                "echo 'DNS_FIX_APPLIED'"
+            )
+            result = self.run_wsl_bash_capture(dns_fix_command)
+            if result.returncode != 0:
+                self.append_output("WSL DNS repair failed.\n", "red")
+                error_text = (result.stderr or result.stdout or "").strip()
+                if error_text:
+                    self.append_output(f"{error_text}\n", "red")
+                return
+
+            if result.stdout.strip():
+                self.append_output(f"{result.stdout.strip()}\n")
+
+            self.append_output("Restarting WSL to apply DNS settings...\n")
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = 0  # SW_HIDE
+            subprocess.run(
+                ["wsl", "--shutdown"],
+                capture_output=True,
+                text=True,
+                startupinfo=startupinfo,
+                creationflags=subprocess.CREATE_NO_WINDOW
+            )
+
+            # Trigger WSL startup and verify DNS resolution.
+            verify_result = self.run_wsl_bash_capture("getent hosts github.com | head -n 1")
+            if verify_result.returncode == 0 and verify_result.stdout.strip():
+                self.append_output("WSL DNS repair completed successfully.\n", "green")
+                self.append_output(f"github.com resolves to: {verify_result.stdout.strip()}\n", "green")
+            else:
+                self.append_output("WSL DNS settings updated, but github.com still does not resolve.\n", "yellow")
+                error_text = (verify_result.stderr or verify_result.stdout or "").strip()
+                if error_text:
+                    self.append_output(f"{error_text}\n", "yellow")
+                self.append_output(
+                    "Check VPN/firewall/router DNS policies on the host network.\n",
+                    "yellow"
+                )
+
+        except Exception as e:
+            self.append_output(f"Error during WSL DNS repair: {e}\n", "red")
 
     def run_wsl_bash_capture(self, bash_command):
         """Run a bash command in WSL and return completed process output."""
